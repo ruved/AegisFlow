@@ -1,0 +1,274 @@
+{
+  "timestamp_utc": "2026-10-19T10:28:06.359941+00:00",
+  "ollama_url": "http://localhost:11434",
+  "config": {
+    "chat_models": [
+      "qwen3.5:4b-q4_K_M",
+      "llama3.1:8b",
+      "gemma3:4b"
+    ],
+    "embedding_model": "nomic-embed-text:latest",
+    "trials_per_model": 3,
+    "num_ctx": 4096,
+    "num_predict": 160,
+    "temperature": 0
+  },
+  "model_summaries": [
+    {
+      "model": "qwen3.5:4b-q4_K_M",
+      "trials": 3,
+      "median_wall_seconds": 6.565,
+      "p95_wall_seconds": 7.102,
+      "median_first_output_seconds": 2.294,
+      "median_tokens_per_second": 11.75,
+      "schema_valid_trials": 3,
+      "correct_selection_trials": 3,
+      "trials_detail": [
+        {
+          "model": "qwen3.5:4b-q4_K_M",
+          "wall_seconds": 6.522,
+          "first_output_seconds": 2.294,
+          "load_seconds": 0.027,
+          "prompt_tokens": 62,
+          "output_tokens": 50,
+          "generation_seconds": 4.225,
+          "tokens_per_second": 11.83,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "User requested deployment status for payments-api."
+          }
+        },
+        {
+          "model": "qwen3.5:4b-q4_K_M",
+          "wall_seconds": 6.565,
+          "first_output_seconds": 2.301,
+          "load_seconds": 0.031,
+          "prompt_tokens": 62,
+          "output_tokens": 50,
+          "generation_seconds": 4.257,
+          "tokens_per_second": 11.75,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "User requested deployment status for payments-api."
+          }
+        },
+        {
+          "model": "qwen3.5:4b-q4_K_M",
+          "wall_seconds": 7.102,
+          "first_output_seconds": 2.262,
+          "load_seconds": 0.022,
+          "prompt_tokens": 62,
+          "output_tokens": 50,
+          "generation_seconds": 4.837,
+          "tokens_per_second": 10.34,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "User requested deployment status for payments-api."
+          }
+        }
+      ]
+    },
+    {
+      "model": "llama3.1:8b",
+      "trials": 3,
+      "median_wall_seconds": 6.471,
+      "p95_wall_seconds": 7.009,
+      "median_first_output_seconds": 2.295,
+      "median_tokens_per_second": 8.15,
+      "schema_valid_trials": 3,
+      "correct_selection_trials": 3,
+      "trials_detail": [
+        {
+          "model": "llama3.1:8b",
+          "wall_seconds": 7.009,
+          "first_output_seconds": 2.351,
+          "load_seconds": 0.056,
+          "prompt_tokens": 60,
+          "output_tokens": 34,
+          "generation_seconds": 4.661,
+          "tokens_per_second": 7.3,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "No previous run"
+          }
+        },
+        {
+          "model": "llama3.1:8b",
+          "wall_seconds": 6.374,
+          "first_output_seconds": 2.273,
+          "load_seconds": 0.043,
+          "prompt_tokens": 60,
+          "output_tokens": 34,
+          "generation_seconds": 4.09,
+          "tokens_per_second": 8.31,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "No previous run"
+          }
+        },
+        {
+          "model": "llama3.1:8b",
+          "wall_seconds": 6.471,
+          "first_output_seconds": 2.295,
+          "load_seconds": 0.021,
+          "prompt_tokens": 60,
+          "output_tokens": 34,
+          "generation_seconds": 4.174,
+          "tokens_per_second": 8.15,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "No previous run"
+          }
+        }
+      ]
+    },
+    {
+      "model": "gemma3:4b",
+      "trials": 3,
+      "median_wall_seconds": 4.973,
+      "p95_wall_seconds": 5.032,
+      "median_first_output_seconds": 2.359,
+      "median_tokens_per_second": 13.76,
+      "schema_valid_trials": 3,
+      "correct_selection_trials": 3,
+      "trials_detail": [
+        {
+          "model": "gemma3:4b",
+          "wall_seconds": 4.973,
+          "first_output_seconds": 2.37,
+          "load_seconds": 0.034,
+          "prompt_tokens": 64,
+          "output_tokens": 36,
+          "generation_seconds": 2.6,
+          "tokens_per_second": 13.85,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "Retrieving deployment status."
+          }
+        },
+        {
+          "model": "gemma3:4b",
+          "wall_seconds": 4.961,
+          "first_output_seconds": 2.342,
+          "load_seconds": 0.022,
+          "prompt_tokens": 64,
+          "output_tokens": 36,
+          "generation_seconds": 2.616,
+          "tokens_per_second": 13.76,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "Retrieving deployment status."
+          }
+        },
+        {
+          "model": "gemma3:4b",
+          "wall_seconds": 5.032,
+          "first_output_seconds": 2.359,
+          "load_seconds": 0.027,
+          "prompt_tokens": 64,
+          "output_tokens": 36,
+          "generation_seconds": 2.671,
+          "tokens_per_second": 13.48,
+          "done_reason": "stop",
+          "json_parse_valid": true,
+          "schema_valid": true,
+          "correct_tool_selection": true,
+          "parse_error": null,
+          "response": {
+            "tool_name": "get_deployment_status",
+            "arguments": {
+              "service_name": "payments-api"
+            },
+            "reason": "Retrieving deployment status."
+          }
+        }
+      ]
+    }
+  ],
+  "embedding": {
+    "model": "nomic-embed-text:latest",
+    "wall_seconds": 3.81,
+    "vector_dimensions": 768,
+    "success": true
+  },
+  "concurrency_test": {
+    "model": "llama3.1:8b",
+    "parallel_requests": 2,
+    "wall_seconds": 26.038,
+    "schema_valid_responses": 2,
+    "correct_tool_selections": 2,
+    "individual_wall_seconds": [
+      25.931,
+      20.868
+    ]
+  },
+  "notes": [
+    "First-output latency is time to first non-empty response or thinking fragment, not strict user-visible TTFT.",
+    "Memory usage is not measured in this first version.",
+    "With three trials, p95 is effectively the maximum observation; increase TRIALS for a more stable estimate."
+  ]
+}

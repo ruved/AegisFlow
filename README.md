@@ -1,250 +1,103 @@
-# AegisFlow
+﻿# AegisFlow
 
-A local-first AI engineering learning project. Week 1 builds a small RAG service,
-creates a synthetic incident corpus and golden question set, and records an
-initial evaluation. The repository currently implements a FastAPI RAG prototype;
-the broader stateful agent-orchestration platform is still a project goal.
+AegisFlow is a local-first retrieval-augmented generation (RAG) prototype for answering questions over a synthetic service-incident corpus. The current work focuses on hybrid retrieval, parent-child chunking, cited answers, evidence sufficiency, abstention, and repeatable evaluation. It is not yet a general workflow engine or tool-using agent platform.
 
-## Week 1 — Foundations, model spike, corpus, baseline
+## Current pipeline
 
-**Week goal:** establish a working RAG baseline and record first measured results.
+1. **Ingest:** parse Markdown, text, logs, and HTML; split Markdown into heading-aware parent passages and smaller child matches; embed children with Ollama; store vectors in Chroma and text/parent metadata in SQLite FTS5.
+2. **Retrieve:** run dense and lexical search concurrently, merge their rankings with reciprocal-rank fusion (RRF, constant 60), hydrate parent passages, and retain the matched child excerpt.
+3. **Verify and answer:** apply initial retrieval gates (maximum RRF score 0.015 and best cosine distance 0.82), then ask Qwen 3.5 4B whether the matched evidence is sufficient. If not, return an abstention with missing information. If sufficient, Gemma 3 4B generates structured claims with validated evidence IDs.
+4. **Serve:** FastAPI provides `/health`, `/ready`, and `/ask`. Ask responses include `answer`, `sources`, `citations`, `abstained`, and `missing`.
 
-**Week review:** the problem definition, local model comparison, 27-document
-corpus, 30-question golden set, API, RAG modules, and evaluation runner are in the
-repository. The measured E0 run completed, but its Chroma collection contains two
-sample chunks rather than the `data/corpus` documents expected by the golden set.
-So the pipeline and measurement are real, while corpus-level retrieval quality is
-not yet established. The daily notes below distinguish shipped work from gaps.
+These score cutoffs are starting points, not calibrated production thresholds. The verifier's full E2 evaluation is currently blocked by slow/stalled local inference; see [ADR-003](docs/ADR-003-abstention-and-grader.md).
 
-### W1 D1 — Problem statement and environment
+## Corpus and golden set
 
-**Goal:** define the user problem and make the Python project buildable and
-checkable.
+- `data/corpus/` contains 27 synthetic Markdown documents: service descriptions, runbooks, postmortems, and incident logs.
+- `data/eval/golden_v0.jsonl` contains 41 questions: 20 single-hop, 5 multi-part, 10 unanswerable, and 6 conflicting-document cases.
+- Gold sources identify document and heading rather than chunk IDs so they remain useful after chunking changes.
 
-**What is in the repository:**
-
-- [docs/problem-statement.md](docs/problem-statement.md) identifies backend
-  engineers as the user, describes workflow reliability and debugging pain, and
-  defines success metrics for workflow success, latency, and trace coverage.
-- Python is pinned to 3.12 in [.python-version](.python-version). Dependency
-  metadata and the lockfile are in [pyproject.toml](pyproject.toml) and
-  [uv.lock](uv.lock); Ruff, mypy, pytest, and pre-commit are configured.
-- The [Makefile](Makefile) provides `make test`, `make lint`, `make eval`, and
-  `make format`. Here, `make eval` runs the test suite; it does not run the
-  golden-set model evaluation.
-- [.pre-commit-config.yaml](.pre-commit-config.yaml) runs Ruff lint, Ruff format
-  check, mypy, and pytest before commits.
-- [docs/hardware.md](docs/hardware.md) records Windows 11, Python 3.12.4, an
-  Intel i7-1360P, 13.73 GB RAM, and integrated Intel Iris Xe graphics. Dedicated
-  VRAM/GPU use, runtime memory, and repeatable latency were not verified in that
-  hardware note.
-
-**What we learned / tradeoffs:** a lockfile makes installs more repeatable, and
-pre-commit catches mistakes before they reach Git; both add tooling to learn and
-can slow early commits. Local inference avoids a hosted API but makes model
-quality and latency depend on the available machine.
-
-**Status:** core setup and problem statement exist. The hardware note still marks
-GPU, memory, and some runtime measurements as unverified.
-
-### W1 D2 — Model spike
-
-**Goal:** measure what the local machine can run and choose initial chat and
-embedding models.
-
-**What is in the repository:** [docs/model_comparison.md](docs/model_comparison.md)
-records three-trial chat comparisons, an embedding check, a two-request
-concurrency experiment, and a context-size comparison. The recorded chat results
-were:
-
-| Model | Median latency | Median generation speed | Structured outputs |
-| --- | ---: | ---: | ---: |
-| Gemma 3 4B | 4.97 s | 13.76 tokens/s | 3/3 |
-| Qwen 3.5 4B Q4_K_M | 6.57 s | 11.75 tokens/s | 3/3 |
-| Llama 3.1 8B | 6.47 s | 8.15 tokens/s | 3/3 |
-
-The embedding sample used `nomic-embed-text:latest`, took 3.81 seconds, and
-returned 768 dimensions. The initial configuration selects `gemma3:4b`,
-`nomic-embed-text:latest`, and a 4096-token context in
-[config.py](src/aegisflow/config.py).
-
-**What we learned / tradeoffs:** smaller models use fewer resources and were
-faster in this small spike, but this is not a broad reasoning-quality result.
-The Qwen settings differed from the other chat models. The concurrency run was
-slow, and the report warns that its sampled memory values may not represent total
-model memory. Treat these as initial measurements, not production capacity claims.
-
-**Status:** model decision and measurements are documented; GPU acceleration and
-representative workflow quality still need validation.
-
-### W1 D3 — Corpus v0
-
-**Goal:** create realistic source material with distinct incidents, evidence
-types, and conflicting guidance.
-
-**What is in the repository:** [data/corpus/services.md](data/corpus/services.md)
-indexes **27 Markdown files**: service architecture and dependency notes, seven
-runbooks, eight postmortems, and two incident logs. It includes an explicitly
-outdated database-pool runbook to test version and conflict awareness.
-
-**What we learned / tradeoffs:** hand-authored synthetic material gives control
-over incident details and avoids using model-written gold answers, but it takes
-time to create. A varied corpus needs both direct evidence and distractors; a
-retrieval score is meaningful only when queries and expected sources match the
-indexed corpus.
-
-**Status:** corpus v0 and its index exist. These documents are not the same as the
-two sample documents currently in the default Chroma collection; see W1 D6.
-
-### W1 D4 — Golden set v0
-
-**Goal:** make a fixed, version-controlled set of questions to measure retrieval
-and answer quality.
-
-**What is in the repository:** [data/eval/golden_v0.jsonl](data/eval/golden_v0.jsonl)
-contains 30 records: 20 single-hop, 5 multi-part, and 5 unanswerable. Each record
-has an ID, question, key facts, expected document-and-section sources, and
-difficulty. [test_golden_set.py](tests/test_golden_set.py) checks the schema,
-distribution, unique IDs, source documents, and exact section headings.
-
-**What we learned / tradeoffs:** source labels use document and section instead of
-chunk IDs, so they survive later re-chunking but score more coarsely. The gold
-answers are key facts rather than full reference paragraphs. The tests establish
-dataset integrity; by themselves, they do not measure RAG quality.
-
-**Status:** dataset and validation tests exist. Key facts still need human
-application when grading generated answers.
-
-### W1 D5 — Baseline RAG (E0)
-
-**Goal:** connect ingestion, embeddings, vector search, and one grounded answer
-generation call.
-
-**What is in the repository:**
-
-1. [ingest.py](src/aegisflow/rag/ingest.py) finds Markdown/text documents and
-   passes them to fixed character windows in
-   [chunking.py](src/aegisflow/rag/chunking.py) (800 characters, 100 overlap).
-2. [embeddings.py](src/aegisflow/rag/embeddings.py) calls local Ollama using
-   `nomic-embed-text:latest`.
-3. [vector_store.py](src/aegisflow/rag/vector_store.py) persists explicit vectors
-   in Chroma and searches with cosine distance.
-4. [retrieval.py](src/aegisflow/rag/retrieval.py) embeds the question and returns
-   dense top-k chunks.
-5. [generation.py](src/aegisflow/rag/generation.py) sends retrieved context to
-   `gemma3:4b` for one grounded response and includes source filenames. Empty
-   retrieval returns an insufficient-evidence answer without generation.
-
-**Important current gap:** ingestion defaults to `docs/rag_samples/`, which has
-two sample Markdown documents. It does not default to `data/corpus/`. Ingestion
-uses upsert but does not remove obsolete chunks when a source is deleted or
-chunking changes. The collection used for E0 had only two chunks from
-`architecture.md` and `ingestion.md`.
-
-**CLI status:** the modules can be run directly:
+The current default ingestion input is `docs/rag_samples/`; explicitly pass `data/corpus` for corpus experiments. Example:
 
 ```powershell
-uv run python -m aegisflow.rag.ingest
-uv run python -m aegisflow.rag.generation "question"
+uv run python -m aegisflow.rag.ingest --docs data/corpus --store chroma_db_w3
 ```
 
-The planned `make ingest` and `make ask Q="..."` targets are not in the current
-Makefile, and the configured `aegisflow` console command still prints a
-placeholder greeting. Those workflows are not complete yet.
+The `chroma_db_w3/` index is local and ignored by Git. It contains 254 parent passages and 274 child matches for the current corpus/configuration. Rebuild it with the command above when the index is absent or stale.
 
-**What we learned / tradeoffs:** embeddings map text to vectors and cosine search
-ranks nearby vectors; fixed windows are simple but can split ideas. Chroma is
-local and easy to run, but dense retrieval can miss exact terms. The collection
-checks its embedding model to avoid querying vectors built with a different
-model.
+## Run retrieval evaluation
 
-**Status:** the RAG path works against the sample index. Full-corpus ingestion and
-the requested Make/console workflows remain follow-up work.
-
-### W1 D6 — Evaluation runner and baseline E0
-
-**Goal:** repeatedly evaluate golden questions and record first measured
-retrieval, latency, and token results.
-
-**What is in the repository:** [evals/run_eval.py](evals/run_eval.py) invokes the
-existing generation/retrieval path directly; it does not require the FastAPI
-server. It defaults to three runs and `k=3`, writes one row per question to
-[results/baseline_E0.csv](results/baseline_E0.csv), and records retrieved chunks,
-source lists, per-run latency/failure details, and provider token usage when
-available. Manual correctness fields start blank and are preserved when the CSV
-is regenerated. Details and grading rubric: [devlog/W1_D6.md](devlog/W1_D6.md).
-
-**Measured run:** `uv run python evals/run_eval.py --runs 3 --k 3`
-
-| Metric | Result |
-| --- | ---: |
-| Questions / repetitions | 30 / 3 |
-| Successful questions / failed runs | 30 / 0 |
-| Mean source Recall@3 | 0.000 (25 eligible; 5 no-gold-source questions excluded) |
-| Median across per-question median latency | 6,790.953 ms |
-| P95 across per-question median latency | 13,040.563 ms |
-| Average prompt / completion tokens | 287.167 / 33.067 |
-| Manually graded answers | 0 |
-
-**Interpretation:** the zero Recall@3 is expected for the collection that was
-actually evaluated: all questions retrieved the same two sample sources, while
-the gold set expects material from `data/corpus`. A representative Order Service
-answer said the evidence was insufficient. The run proves the evaluation path
-works; it does not establish retrieval quality over the full synthetic corpus.
-Latency includes query embedding, Chroma retrieval, and generation. The first run
-is included and can be affected by model loading. Model output and timing are not
-deterministic.
-
-**Status:** baseline CSV and measured devlog entry exist. Correctness remains
-ungraded by a human or automated judge.
-
-## Current API
-
-- `GET /health` is process liveness and does not contact dependencies.
-- `GET /ready` checks bounded Ollama and Chroma availability without model
-  inference; it returns `503` when a dependency is unavailable.
-- `POST /ask` accepts a non-empty question up to 4,000 characters and optional
-  `top_k` from 1 through 10 (default 3).
-
-Ollama request timeouts are 30 seconds for embeddings, 120 seconds for chat, and
-2 seconds for readiness. API errors map invalid requests to `422`, unavailable
-dependencies to `503`, inference timeouts to `504`, invalid dependency responses
-to `502`, and configuration or unexpected failures to safe `500` responses.
-Logs do not include full user questions or retrieved passages.
-
-Example local API requests:
+With Ollama running and the corpus index built:
 
 ```powershell
-curl.exe http://localhost:8000/health
-curl.exe http://localhost:8000/ready
-curl.exe -X POST http://localhost:8000/ask -H "Content-Type: application/json" -d '{"question":"How does AegisFlow work?","top_k":3}'
+uv run eval-retrieval --dataset data/eval/golden_v0.jsonl --corpus data/corpus --store chroma_db_w3 --k 3
 ```
 
-## Run evaluation
+This reports section-level Recall@k, MRR, and nDCG for dense, lexical, and fused retrieval. The earlier dense-versus-hybrid retrieval experiment is documented in [ADR-002](docs/ADR-002-hybrid-retrieval.md), with per-question data in `results/E1_retrieval_comparison.csv`.
 
-From the repository root, with Ollama running and the selected Chroma collection
-available:
+## Run answer evaluation
+
+Run E1 without the verifier and E2 with it, using the same dataset, index, `k`, and repetition count:
 
 ```powershell
-uv run python evals/run_eval.py
+uv run python evals/run_eval.py --dataset data/eval/golden_v0.jsonl --runs 1 --k 3 --store chroma_db_w3 --no-verifier --output results/baseline_E1_answer.csv
+uv run python evals/run_eval.py --dataset data/eval/golden_v0.jsonl --runs 1 --k 3 --store chroma_db_w3 --output results/baseline_E2_answer.csv
 ```
 
-Defaults are `data/eval/golden_v0.jsonl`, three repetitions, `k=3`, the existing
-`chroma_db` collection, and `results/baseline_E0.csv`. Options include
-`--runs`, `--k`, `--dataset`, `--output`, and `--store`. The runner returns a
-nonzero status for invalid datasets or failed evaluation runs. Recall is
-source-level, not chunk-level recall. It does not automatically score the
-semantic correctness of generated answers.
+When both result files exist, summarize abstention, citation precision/recall, threshold tradeoffs, and create a 20-answer human-review sheet:
 
-## Week review and next steps
+```powershell
+uv run python evals/report_answer_quality.py --e1 results/baseline_E1_answer.csv --e2 results/baseline_E2_answer.csv
+```
 
-The biggest gap is that the existing index does not contain the corpus used to
-write the golden sources. First ingest `data/corpus` into a separate Chroma store
-so the current local index remains untouched, then rerun E0 with the same models,
-`k`, and repetitions. Compare Recall@3 and manually grade answers against their
-retrieved evidence. After establishing that comparable baseline, the next planned
-retrieval experiment is lexical search (for example FTS5) alongside dense search.
+To summarize the currently available E1 result only:
 
-The project is still a RAG/API prototype: a general stateful workflow engine,
-tool execution, and trace coverage from the original problem statement are not
-implemented yet.
+```powershell
+uv run python evals/report_answer_quality.py --e1 results/baseline_E1_answer.csv --output results/baseline_E1_answer_quality.json
+```
+
+The report's retrieval evidence-hit rate is a correctness proxy, not a human correctness grade. Enter binary human labels in `results/judge_human_review.csv` after it is generated, then rerun the report to calculate raw agreement and Cohen's kappa.
+
+## Recorded answer results
+
+The full E1 run completed all 41 questions: 30 generations succeeded and 11 failed structured-answer validation after retry. Source Recall@3 was 0.500; median per-question latency was 19.482 seconds and P95 was 46.261 seconds. Without the verifier, the generator abstained on 8/10 unanswerables and 0/31 answerables. Citation precision/recall were 0.200/0.111 using exact source-heading matches.
+
+At the initial RRF cutoff of 0.015, the score gate alone still accepted every tuning-set unanswerable and 80% of the held-out unanswerables. The measured tuning/held-out curve is in [abstention_tradeoff.svg](results/abstention_tradeoff.svg); numbers and run configuration are in `results/baseline_E1_answer_quality.json` and `results/baseline_v2_config.json`.
+
+The 41-question E2 run and two 20-question retries did not produce output CSVs because local inference stalled. E2 verifier performance, citation metrics, and judge-human agreement are therefore not measured yet. The recorded E1 refusal rate is not verifier performance.
+
+## API response shape
+
+A verified answer returns structured, server-validated citation references. If evidence is insufficient, the response includes an explicit refusal and a short `missing` list, for example:
+
+```json
+{
+  "answer": "I can't answer this reliably from the available evidence. Missing: current live metrics",
+  "sources": [],
+  "citations": [],
+  "abstained": true,
+  "missing": ["current live metrics"]
+}
+```
+
+The FastAPI application object is `aegisflow.api:app`. Health and readiness behavior, request bounds, timeouts, and safe error mapping are implemented in [api.py](src/aegisflow/api.py).
+
+## Development checks
+
+```powershell
+uv run python -m pytest -q
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+```
+
+The last recorded verification passed 105 tests, Ruff, and mypy across 19 source files. The project manifest currently declares FastAPI but does not yet declare every runtime package imported by the application (including ChromaDB); a clean-environment dependency audit remains necessary.
+
+## Project notes
+
+- [Problem statement](docs/problem-statement.md)
+- [Hardware and model notes](docs/hardware.md) and [model comparison](docs/model_comparison.md)
+- [Chunking experiment](docs/chunking.md)
+- [ADR-002: hybrid retrieval](docs/ADR-002-hybrid-retrieval.md)
+- [ADR-003: abstention and grader calibration](docs/ADR-003-abstention-and-grader.md)
+- [W3 D4-D6 devlog](devlog/W3_D4-D6.md)

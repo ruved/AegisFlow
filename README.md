@@ -1,6 +1,6 @@
 ﻿# AegisFlow
 
-AegisFlow is a local-first retrieval-augmented generation (RAG) prototype for answering questions over a synthetic service-incident corpus. The current work focuses on hybrid retrieval, parent-child chunking, cited answers, evidence sufficiency, abstention, and repeatable evaluation. It is not yet a general workflow engine or tool-using agent platform.
+AegisFlow is a local-first retrieval-augmented generation (RAG) prototype for answering questions over a synthetic service-incident corpus. The current work focuses on hybrid retrieval, parent-child chunking, cited answers, evidence sufficiency, abstention, and repeatable evaluation. It now includes a bounded typed multi-step workflow for experiments, but it is not a general workflow engine or tool-using agent platform.
 
 ## Current pipeline
 
@@ -9,7 +9,31 @@ AegisFlow is a local-first retrieval-augmented generation (RAG) prototype for an
 3. **Verify and answer:** apply initial retrieval gates (maximum RRF score 0.015 and best cosine distance 0.82), then ask Qwen 3.5 4B whether the matched evidence is sufficient. If not, return an abstention with missing information. If sufficient, Gemma 3 4B generates structured claims with validated evidence IDs.
 4. **Serve:** FastAPI provides `/health`, `/ready`, and `/ask`. Ask responses include `answer`, `sources`, `citations`, `abstained`, and `missing`.
 
+The experimental LangGraph path separates planning, retrieval, evidence-only analysis, reporting, verification, and bounded retry/abstention. `RunState` is a `TypedDict`; each model node validates its JSON result with Pydantic. JSON logs carry `run_id`, node duration, reported or estimated token counts, and cache status. Workflow callers use `aegisflow.workflow.run_workflow`; LangGraph assembly stays in `workflow/graph.py`.
+
 These score cutoffs are starting points, not calibrated production thresholds. The verifier's full E2 evaluation is currently blocked by slow/stalled local inference; see [ADR-003](docs/ADR-003-abstention-and-grader.md).
+
+## Week 4 workflow and E4 evaluation
+
+Run the bounded workflow for one question (Ollama and the W3 index must be available):
+
+```powershell
+uv run python -c "from aegisflow.workflow import run_workflow; print(run_workflow({'question': 'What caused the payment timeout?', 'store_path': 'chroma_db_w3'})['report'])"
+```
+
+Run the baseline-vs-workflow E4 evaluation on all 41 golden questions. Each completed case is saved immediately, so partial runs remain inspectable:
+
+```powershell
+uv run python evals/run_e4.py --store chroma_db_w3 --output results/E4_workflow.csv
+```
+
+Measure planner schema validity on the deterministic 15-question planning sample (10 single-hop and 5 multi-part):
+
+```powershell
+uv run python evals/evaluate_planner.py --model gemma3:4b
+```
+
+For a clearly labeled pilot or slice, pass `--limit N` or `--slice unanswerable`. The runner reports planner schema-valid rate, task completion (for unanswerables, a supported abstention counts as completion), citation precision/recall against gold source headings, abstention by dataset slice, latency, and per-node time/token breakdown. `results/E4_workflow.json` records the model and run budgets; CSV telemetry contains the per-node event details. Compare E4 completion and latency with matching IDs from the saved E1 CSV. The run and keep/drop decision are recorded in [ADR-004](docs/ADR-004-e4-workflow.md); a subset is a pilot, not a full-set result.
 
 ## Corpus and golden set
 
@@ -58,6 +82,10 @@ uv run python evals/report_answer_quality.py --e1 results/baseline_E1_answer.csv
 
 The report's retrieval evidence-hit rate is a correctness proxy, not a human correctness grade. Enter binary human labels in `results/judge_human_review.csv` after it is generated, then rerun the report to calculate raw agreement and Cohen's kappa.
 
+## Recorded Week 4 results
+
+The planner-only check returned schema-valid, bounded plans on 15/15 questions (10 single-hop and 5 multi-part) with Gemma 3 4B; mean latency was 9.06 seconds. The end-to-end E4 pilot used three answerable and three unanswerable questions. It completed 0/3 answerable cases by gold-source citation and correctly abstained on 2/3 unanswerable cases. Its median latency was 92.3 seconds versus 28.1 seconds for the same E1 questions. See [ADR-004](docs/ADR-004-e4-workflow.md) for per-node timings, the decision, and limitations. The 41-question E4 run remains unmeasured; the pilot median projects about 63 minutes of local inference.
+
 ## Recorded answer results
 
 The full E1 run completed all 41 questions: 30 generations succeeded and 11 failed structured-answer validation after retry. Source Recall@3 was 0.500; median per-question latency was 19.482 seconds and P95 was 46.261 seconds. Without the verifier, the generator abstained on 8/10 unanswerables and 0/31 answerables. Citation precision/recall were 0.200/0.111 using exact source-heading matches.
@@ -91,7 +119,7 @@ uv run ruff format --check .
 uv run mypy src
 ```
 
-The last recorded verification passed 105 tests, Ruff, and mypy across 19 source files. The project manifest currently declares FastAPI but does not yet declare every runtime package imported by the application (including ChromaDB); a clean-environment dependency audit remains necessary.
+The Week 4 verification passed 112 tests, Ruff lint and format checks, and mypy across 28 source files. `pyproject.toml` declares FastAPI, ChromaDB, and LangGraph as runtime dependencies.
 
 ## Project notes
 
@@ -100,4 +128,6 @@ The last recorded verification passed 105 tests, Ruff, and mypy across 19 source
 - [Chunking experiment](docs/chunking.md)
 - [ADR-002: hybrid retrieval](docs/ADR-002-hybrid-retrieval.md)
 - [ADR-003: abstention and grader calibration](docs/ADR-003-abstention-and-grader.md)
+- [ADR-004: typed workflow and E4 results](docs/ADR-004-e4-workflow.md)
+- [W4 D1-D6 devlog](devlog/W4_D1-D6.md)
 - [W3 D4-D6 devlog](devlog/W3_D4-D6.md)

@@ -1,0 +1,94 @@
+{
+  "dataset": "D:\\cc\\prep\\aegisflow\\data\\eval\\golden_v0.jsonl",
+  "store": "chroma_db_w3",
+  "planner_model": "gemma3:4b",
+  "analyst_reporter_verifier_model": "gemma3:4b",
+  "workflow_prompt_version": "w4-analyst-evidence-extraction-v2",
+  "max_steps": 14,
+  "max_tokens": 6000,
+  "max_retries": 1,
+  "question_count": 3,
+  "successful_runs": 3,
+  "failed_runs": 0,
+  "planner_valid_rate": 1.0,
+  "task_completion_rate": 0.6666666666666666,
+  "abstention_rate": 0.6666666666666666,
+  "mean_citation_precision": null,
+  "mean_citation_recall": null,
+  "per_slice": {
+    "unanswerable": {
+      "count": 3,
+      "task_completion_rate": 0.6666666666666666,
+      "abstention_rate": 0.6666666666666666
+    }
+  },
+  "median_latency_ms": 96202.3,
+  "p95_latency_ms": 171449.745,
+  "per_node": {
+    "abstain": {
+      "calls": 2,
+      "mean_duration_ms": 1.0365,
+      "median_duration_ms": 1.0365,
+      "mean_tokens": 0
+    },
+    "analyst": {
+      "calls": 4,
+      "mean_duration_ms": 37755.013249999996,
+      "median_duration_ms": 27847.1865,
+      "mean_tokens": 770
+    },
+    "finish": {
+      "calls": 1,
+      "mean_duration_ms": 7.086,
+      "median_duration_ms": 7.086,
+      "mean_tokens": 0
+    },
+    "guard": {
+      "calls": 23,
+      "mean_duration_ms": 0.012260869565217391,
+      "median_duration_ms": 0.012,
+      "mean_tokens": 0
+    },
+    "planner": {
+      "calls": 3,
+      "mean_duration_ms": 10249.396666666667,
+      "median_duration_ms": 8549.288,
+      "mean_tokens": 215.66666666666666
+    },
+    "reporter": {
+      "calls": 4,
+      "mean_duration_ms": 21567.85075,
+      "median_duration_ms": 27928.52,
+      "mean_tokens": 659.75
+    },
+    "retrieve": {
+      "calls": 4,
+      "mean_duration_ms": 5802.9394999999995,
+      "median_duration_ms": 6822.4619999999995,
+      "mean_tokens": 0
+    },
+    "rewriter": {
+      "calls": 1,
+      "mean_duration_ms": 9929.449,
+      "median_duration_ms": 9929.449,
+      "mean_tokens": 199
+    },
+    "verifier": {
+      "calls": 4,
+      "mean_duration_ms": 12086.48325,
+      "median_duration_ms": 14381.77,
+      "mean_tokens": 556
+    }
+  },
+  "result_csv": "results\\E4_unanswerable_pilot.csv",
+  "e1_comparison": {
+    "file": "D:\\cc\\prep\\aegisflow\\results\\baseline_E1_answer.csv",
+    "matched_questions": 3,
+    "baseline_success_rate": 1.0,
+    "workflow_task_completion_rate": 0.6666666666666666,
+    "baseline_median_latency_ms": 14395.772,
+    "workflow_median_latency_ms": 96202.3
+  },
+  "limit": 3,
+  "slice_filter": "unanswerable"
+}

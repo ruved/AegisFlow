@@ -1,0 +1,88 @@
+{
+  "dataset": "D:\\cc\\prep\\aegisflow\\data\\eval\\golden_v0.jsonl",
+  "store": "chroma_db_w3",
+  "planner_model": "gemma3:4b",
+  "analyst_reporter_verifier_model": "gemma3:4b",
+  "workflow_prompt_version": "w4-analyst-evidence-extraction-v2",
+  "max_steps": 14,
+  "max_tokens": 6000,
+  "max_retries": 1,
+  "question_count": 3,
+  "successful_runs": 3,
+  "failed_runs": 0,
+  "planner_valid_rate": 1.0,
+  "task_completion_rate": 0.0,
+  "abstention_rate": 0.3333333333333333,
+  "mean_citation_precision": 0.0,
+  "mean_citation_recall": 0.0,
+  "per_slice": {
+    "single_hop": {
+      "count": 3,
+      "task_completion_rate": 0.0,
+      "abstention_rate": 0.3333333333333333
+    }
+  },
+  "median_latency_ms": 88351.362,
+  "p95_latency_ms": 127099.797,
+  "per_node": {
+    "abstain": {
+      "calls": 1,
+      "mean_duration_ms": 0.114,
+      "median_duration_ms": 0.114,
+      "mean_tokens": 0
+    },
+    "analyst": {
+      "calls": 3,
+      "mean_duration_ms": 27163.685666666668,
+      "median_duration_ms": 21887.753,
+      "mean_tokens": 939.6666666666666
+    },
+    "finish": {
+      "calls": 2,
+      "mean_duration_ms": 0.1765,
+      "median_duration_ms": 0.1765,
+      "mean_tokens": 0
+    },
+    "guard": {
+      "calls": 18,
+      "mean_duration_ms": 0.011888888888888888,
+      "median_duration_ms": 0.0115,
+      "mean_tokens": 0
+    },
+    "planner": {
+      "calls": 3,
+      "mean_duration_ms": 7759.794333333333,
+      "median_duration_ms": 8352.493,
+      "mean_tokens": 214.66666666666666
+    },
+    "reporter": {
+      "calls": 3,
+      "mean_duration_ms": 37971.57433333333,
+      "median_duration_ms": 37611.865,
+      "mean_tokens": 1125.3333333333333
+    },
+    "retrieve": {
+      "calls": 3,
+      "mean_duration_ms": 6176.830333333333,
+      "median_duration_ms": 6596.053,
+      "mean_tokens": 0
+    },
+    "verifier": {
+      "calls": 3,
+      "mean_duration_ms": 19886.591666666667,
+      "median_duration_ms": 19252.302,
+      "mean_tokens": 911
+    }
+  },
+  "result_csv": "results\\E4_singlehop_pilot.csv",
+  "e1_comparison": {
+    "file": "D:\\cc\\prep\\aegisflow\\results\\baseline_E1_answer.csv",
+    "matched_questions": 3,
+    "baseline_success_rate": 1.0,
+    "workflow_task_completion_rate": 0.0,
+    "baseline_median_latency_ms": 32523.062,
+    "workflow_median_latency_ms": 88351.362
+  },
+  "limit": 3,
+  "slice_filter": "single_hop"
+}

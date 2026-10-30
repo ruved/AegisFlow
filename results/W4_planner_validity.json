@@ -1,0 +1,12 @@
+{
+  "dataset": "D:\\cc\\prep\\aegisflow\\data\\eval\\golden_v0.jsonl",
+  "model": "gemma3:4b",
+  "sample_size": 15,
+  "single_hop_count": 10,
+  "multi_part_count": 5,
+  "valid_count": 15,
+  "invalid_count": 0,
+  "schema_valid_rate": 1.0,
+  "mean_latency_ms": 9059.3946,
+  "result_csv": "D:\\cc\\prep\\aegisflow\\results\\W4_planner_validity.csv"
+}

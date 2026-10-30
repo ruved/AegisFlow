@@ -2,7 +2,7 @@
 
 import logging
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, cast
 
 import chromadb
 from fastapi import FastAPI, HTTPException, Request
@@ -48,11 +48,23 @@ class AskRequest(BaseModel):
         return value
 
 
+class CitationResponse(BaseModel):
+    """Map a short answer citation back to its retrieved evidence chunk."""
+
+    evidence_id: str
+    chunk_id: str
+    source: str
+    heading: str | None
+
+
 class AskResponse(BaseModel):
     """Output schema for a question-answering request."""
 
     answer: str
     sources: list[str]
+    citations: list[CitationResponse]
+    abstained: bool = False
+    missing: list[str] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):
@@ -215,4 +227,14 @@ def ask_question(request: AskRequest) -> AskResponse:
         "api_request_completed endpoint=/ask elapsed_ms=%.1f",
         (perf_counter() - started) * 1000,
     )
-    return AskResponse(answer=result["answer"], sources=result["sources"])
+    return AskResponse(
+        answer=result["answer"],
+        sources=result["sources"],
+        citations=[CitationResponse(**citation) for citation in result["citations"]],
+        abstained=bool(result.get("abstained", False)),
+        missing=(
+            cast(list[str], result.get("missing"))
+            if isinstance(result.get("missing"), list)
+            else []
+        ),
+    )

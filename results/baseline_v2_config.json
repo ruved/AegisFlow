@@ -1,0 +1,31 @@
+{
+  "recorded_on": "2026-10-30",
+  "dataset": "data/eval/golden_v0.jsonl",
+  "dataset_questions": 41,
+  "dataset_counts": {
+    "single_hop": 20,
+    "multi_part": 5,
+    "unanswerable": 10,
+    "conflicting_documents": 6
+  },
+  "corpus": "data/corpus (27 documents)",
+  "index": "chroma_db_w3 (parent-child; 254 parents; 274 children)",
+  "retrieval": "dense plus SQLite FTS5, reciprocal-rank fusion constant 60, top_k 3",
+  "answer_model": "gemma3:4b",
+  "judge_model": "qwen3.5:4b",
+  "score_gates": {
+    "minimum_max_rrf_score": 0.015,
+    "maximum_best_cosine_distance": 0.82
+  },
+  "runs_per_question": 1,
+  "E1_full_command": "uv run python -m aegisflow.evaluation --runs 1 --k 3 --store chroma_db_w3 --no-verifier --output results/baseline_E1_answer.csv",
+  "E1_full_status": "completed: 41 questions; 30 succeeded; 11 structured-answer failures",
+  "E2_full_status": "stalled after several hours without an active Ollama request or output CSV; stopped before producing results",
+  "matched_subset": "results/baseline_v2_answer_subset.jsonl (20 questions: 10 answerable including conflicting-document cases; 10 unanswerable)",
+  "E1_subset": "results/baseline_E1_answer_subset.csv (filtered from the full E1 output)",
+  "E2_subset_command": "uv run python -m aegisflow.evaluation --dataset results/baseline_v2_answer_subset.jsonl --runs 1 --k 3 --store chroma_db_w3 --output results/baseline_E2_answer_subset.csv",
+  "E2_subset_status": "two 20-question attempts stalled with no output CSV; the second used matched child excerpts but made no observable progress before it was stopped.",
+  "E1_quality_report": "results/baseline_E1_answer_quality.json (full 41-question baseline)",
+  "threshold_plot": "results/abstention_tradeoff.svg (evidence-hit rate is only a correctness proxy)",
+  "quality_report_command": "uv run python evals/report_answer_quality.py --e1 results/baseline_E1_answer_subset.csv --e2 results/baseline_E2_answer_subset.csv"
+}

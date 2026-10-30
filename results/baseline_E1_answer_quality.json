@@ -1,0 +1,90 @@
+{
+  "E1_without_verifier": {
+    "questions": 41,
+    "answerable": 31,
+    "unanswerable": 10,
+    "answerable_abstention_rate": 0.0,
+    "unanswerable_abstention_recall": 0.8,
+    "coverage_on_answerable": 1.0,
+    "citation_precision": 0.2,
+    "citation_recall": 0.1111111111111111
+  },
+  "E2_with_verifier": null,
+  "threshold_tuning_G001_G030": [
+    {
+      "min_rrf_score": 0.0,
+      "coverage_rate": 1.0,
+      "answerable_evidence_hit_rate": 0.56,
+      "unanswerable_false_accept_rate": 1.0
+    },
+    {
+      "min_rrf_score": 0.01,
+      "coverage_rate": 0.7333333333333333,
+      "answerable_evidence_hit_rate": 0.8235294117647058,
+      "unanswerable_false_accept_rate": 1.0
+    },
+    {
+      "min_rrf_score": 0.015,
+      "coverage_rate": 0.7333333333333333,
+      "answerable_evidence_hit_rate": 0.8235294117647058,
+      "unanswerable_false_accept_rate": 1.0
+    },
+    {
+      "min_rrf_score": 0.02,
+      "coverage_rate": 0.7,
+      "answerable_evidence_hit_rate": 0.8125,
+      "unanswerable_false_accept_rate": 1.0
+    },
+    {
+      "min_rrf_score": 0.025,
+      "coverage_rate": 0.7,
+      "answerable_evidence_hit_rate": 0.8125,
+      "unanswerable_false_accept_rate": 1.0
+    },
+    {
+      "min_rrf_score": 0.03,
+      "coverage_rate": 0.6666666666666666,
+      "answerable_evidence_hit_rate": 0.8125,
+      "unanswerable_false_accept_rate": 0.8
+    }
+  ],
+  "heldout_threshold_curve_G031_plus": [
+    {
+      "min_rrf_score": 0.0,
+      "coverage_rate": 1.0,
+      "answerable_evidence_hit_rate": 0.3333333333333333,
+      "unanswerable_false_accept_rate": 1.0
+    },
+    {
+      "min_rrf_score": 0.01,
+      "coverage_rate": 0.7272727272727273,
+      "answerable_evidence_hit_rate": 0.5,
+      "unanswerable_false_accept_rate": 0.8
+    },
+    {
+      "min_rrf_score": 0.015,
+      "coverage_rate": 0.7272727272727273,
+      "answerable_evidence_hit_rate": 0.5,
+      "unanswerable_false_accept_rate": 0.8
+    },
+    {
+      "min_rrf_score": 0.02,
+      "coverage_rate": 0.7272727272727273,
+      "answerable_evidence_hit_rate": 0.5,
+      "unanswerable_false_accept_rate": 0.8
+    },
+    {
+      "min_rrf_score": 0.025,
+      "coverage_rate": 0.7272727272727273,
+      "answerable_evidence_hit_rate": 0.5,
+      "unanswerable_false_accept_rate": 0.8
+    },
+    {
+      "min_rrf_score": 0.03,
+      "coverage_rate": 0.7272727272727273,
+      "answerable_evidence_hit_rate": 0.5,
+      "unanswerable_false_accept_rate": 0.8
+    }
+  ],
+  "judge_human_agreement": null
+}

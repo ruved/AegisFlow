@@ -8,6 +8,19 @@ class TextChunk:
     chunk_id: str
     source: str
     text: str
+    parent_id: str | None = None
+    parent_start: int | None = None
+    parent_end: int | None = None
+
+
+@dataclass(frozen=True)
+class ParentChunk:
+    """Larger contextual passage that owns one or more matching children."""
+
+    parent_id: str
+    source: str
+    text: str
+    heading: str | None = None
 
 
 def chunk_text(

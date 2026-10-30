@@ -15,12 +15,13 @@ EXPECTED_FIELDS = {
     "gold_sources",
     "difficulty",
 }
-ALLOWED_SLICES = {"single_hop", "multi_part", "unanswerable"}
+ALLOWED_SLICES = {"single_hop", "multi_part", "unanswerable", "conflicting_documents"}
 ALLOWED_DIFFICULTIES = {"easy", "medium", "hard"}
 EXPECTED_SLICE_COUNTS = {
     "single_hop": 20,
     "multi_part": 5,
-    "unanswerable": 5,
+    "unanswerable": 10,
+    "conflicting_documents": 6,
 }
 
 
@@ -47,7 +48,7 @@ def load_jsonl() -> list[dict[str, object]]:
 def test_golden_jsonl_schema_and_slice_distribution() -> None:
     records = load_jsonl()
 
-    assert len(records) == 30, "Expected exactly 30 gold records"
+    assert len(records) == 41, "Expected the 30-case set plus 11 W3 D6 cases"
 
     ids: list[str] = []
     slice_values: list[str] = []
@@ -101,7 +102,7 @@ def test_golden_jsonl_schema_and_slice_distribution() -> None:
 
     assert len(ids) == len(set(ids)), "Record IDs must be unique"
     assert Counter(slice_values) == Counter(EXPECTED_SLICE_COUNTS), (
-        "Expected 20 single_hop, 5 multi_part, and 5 unanswerable records"
+        "Expected 20 single_hop, 5 multi_part, 10 unanswerable, and 6 conflict cases"
     )
 
 

@@ -44,6 +44,10 @@ CSV_FIELDS = [
     "correctness_notes",
     "prompt_tokens",
     "completion_tokens",
+    "abstained",
+    "missing",
+    "citations",
+    "verifier_sufficient",
 ]
 
 
@@ -60,6 +64,17 @@ class GoldenCase:
     gold_sources: tuple[str, ...]
     gold_key_facts: tuple[str, ...]
     gold_source_details: tuple[tuple[str, str | None], ...] = ()
+    slice: str = "unspecified"
+    difficulty: str = "unspecified"
+
+    @property
+    def gold_sections(self) -> tuple[tuple[str, str], ...]:
+        """Return section-level gold targets, omitting source-only legacy entries."""
+        return tuple(
+            (doc, section)
+            for doc, section in self.gold_source_details
+            if section is not None
+        )
 
 
 @dataclass(frozen=True)
@@ -149,6 +164,8 @@ def load_golden_dataset(path: str | Path) -> list[GoldenCase]:
         question = record.get("question")
         raw_sources = record.get("gold_sources")
         raw_facts = record.get("gold_key_facts")
+        raw_slice = record.get("slice", "unspecified")
+        raw_difficulty = record.get("difficulty", "unspecified")
         if not isinstance(record_id, str) or not record_id.strip():
             errors.append(f"line {line_number}: missing or invalid id")
             continue
@@ -172,6 +189,12 @@ def load_golden_dataset(path: str | Path) -> list[GoldenCase]:
             errors.append(
                 f"{record_id}: gold_key_facts must be a list of non-empty strings"
             )
+            valid = False
+        if not isinstance(raw_slice, str) or not raw_slice.strip():
+            errors.append(f"{record_id}: slice must be a non-empty string")
+            valid = False
+        if not isinstance(raw_difficulty, str) or not raw_difficulty.strip():
+            errors.append(f"{record_id}: difficulty must be a non-empty string")
             valid = False
 
         sources: list[str] = []
@@ -215,6 +238,8 @@ def load_golden_dataset(path: str | Path) -> list[GoldenCase]:
                     gold_sources=tuple(dict.fromkeys(sources)),
                     gold_key_facts=tuple(fact.strip() for fact in raw_facts),
                     gold_source_details=tuple(dict.fromkeys(source_details)),
+                    slice=raw_slice.strip(),
+                    difficulty=raw_difficulty.strip(),
                 )
             )
 
@@ -246,6 +271,7 @@ def evaluate_cases(
     k: int = DEFAULT_K,
     store_path: str | Path = DEFAULT_STORE_PATH,
     evaluator: Callable[..., DetailedAnswerResult] = generate_answer_with_details,
+    verify_evidence: bool = True,
 ) -> list[QuestionResult]:
     """Run each question repeatedly through the production RAG service path."""
     if runs <= 0:
@@ -260,7 +286,15 @@ def evaluate_cases(
         for run_number in range(1, runs + 1):
             started = time.perf_counter()
             try:
-                result = evaluator(case.question, k=k, store_path=store_path)
+                if evaluator is generate_answer_with_details:
+                    result = evaluator(
+                        case.question,
+                        k=k,
+                        store_path=store_path,
+                        verify_evidence=verify_evidence,
+                    )
+                else:
+                    result = evaluator(case.question, k=k, store_path=store_path)
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 successes.append(RunSuccess(run_number, elapsed_ms, result))
             except Exception as exc:  # Keep later golden cases evaluable.
@@ -381,6 +415,25 @@ def result_to_csv_row(result: QuestionResult, runs: int) -> dict[str, object]:
         else "",
         "completion_tokens": (
             result.completion_tokens if result.completion_tokens is not None else ""
+        ),
+        "abstained": (
+            str(bool(representative.result.get("abstained", False))).lower()
+            if representative
+            else ""
+        ),
+        "missing": json.dumps(
+            representative.result.get("missing", []) if representative else [],
+            ensure_ascii=False,
+        ),
+        "citations": json.dumps(
+            representative.result.get("citations", []) if representative else [],
+            ensure_ascii=False,
+        ),
+        "verifier_sufficient": (
+            str(representative.result.get("verifier_sufficient")).lower()
+            if representative
+            and isinstance(representative.result.get("verifier_sufficient"), bool)
+            else ""
         ),
     }
 
@@ -519,6 +572,7 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=DEFAULT_RUNS)
     parser.add_argument("--k", type=int, default=DEFAULT_K)
     parser.add_argument("--store", type=Path, default=DEFAULT_STORE_PATH)
+    parser.add_argument("--no-verifier", action="store_true")
     args = parser.parse_args()
 
     if args.runs <= 0 or args.k <= 0:
@@ -530,7 +584,13 @@ def main() -> None:
         raise SystemExit(2) from exc
 
     manual_grades = read_manual_grades(args.output)
-    results = evaluate_cases(cases, runs=args.runs, k=args.k, store_path=args.store)
+    results = evaluate_cases(
+        cases,
+        runs=args.runs,
+        k=args.k,
+        store_path=args.store,
+        verify_evidence=not args.no_verifier,
+    )
     write_results_csv(results, args.output, args.runs)
     summary = summarize_results(results, manual_grades)
     print_summary(summary, args.k, args.output)

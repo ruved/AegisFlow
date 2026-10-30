@@ -71,6 +71,14 @@ def test_ask_endpoint_returns_answer_and_sources(monkeypatch):
         return {
             "answer": "AegisFlow coordinates agent workflows [architecture.md].",
             "sources": ["architecture.md"],
+            "citations": [
+                {
+                    "evidence_id": "1",
+                    "chunk_id": "architecture.md::parent-0",
+                    "source": "architecture.md",
+                    "heading": "Overview",
+                }
+            ],
         }
 
     monkeypatch.setattr(api, "generate_answer", fake_generate_answer)
@@ -83,6 +91,14 @@ def test_ask_endpoint_returns_answer_and_sources(monkeypatch):
     assert response.status_code == 200
     assert response.json()["answer"].startswith("AegisFlow coordinates")
     assert response.json()["sources"] == ["architecture.md"]
+    assert response.json()["citations"] == [
+        {
+            "evidence_id": "1",
+            "chunk_id": "architecture.md::parent-0",
+            "source": "architecture.md",
+            "heading": "Overview",
+        }
+    ]
 
 
 def test_ask_endpoint_rejects_blank_question():

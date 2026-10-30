@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import chromadb
+from chromadb.api.types import Metadata
 from chromadb.errors import ChromaError
 
 from aegisflow.config import EMBEDDING_MODEL
@@ -52,12 +53,44 @@ class VectorStore:
         chromadb_embeddings: list[Sequence[float] | Sequence[int]] = []
         chromadb_embeddings.extend(embeddings)
 
+        metadatas: list[Metadata] = []
+        for chunk in chunks:
+            metadata: dict[str, str | int] = {"source": chunk.source}
+            if chunk.parent_id is not None:
+                metadata["parent_id"] = chunk.parent_id
+            if chunk.parent_start is not None:
+                metadata["parent_start"] = chunk.parent_start
+            if chunk.parent_end is not None:
+                metadata["parent_end"] = chunk.parent_end
+            metadatas.append(metadata)
+
         self.collection.upsert(
             ids=[chunk.chunk_id for chunk in chunks],
             documents=[chunk.text for chunk in chunks],
-            metadatas=[{"source": chunk.source} for chunk in chunks],
+            metadatas=metadatas,
             embeddings=chromadb_embeddings,
         )
+
+    def delete_documents(self, document_ids: Sequence[str]) -> None:
+        """Delete all chunks whose source belongs to one of the given documents."""
+        for document_id in document_ids:
+            self.collection.delete(where={"source": document_id})
+
+    def list_document_ids(self) -> set[str]:
+        """Return source document IDs currently represented in the collection."""
+        result = self.collection.get(include=["metadatas"])
+        metadatas = result["metadatas"]
+        if metadatas is None:
+            return set()
+        document_ids: set[str] = set()
+        for metadata in metadatas:
+            if not isinstance(metadata, dict):
+                raise RuntimeError("Chroma returned missing or invalid source metadata")
+            source = metadata.get("source")
+            if not isinstance(source, str):
+                raise RuntimeError("Chroma returned missing or invalid source metadata")
+            document_ids.add(source)
+        return document_ids
 
     def search(
         self,
@@ -118,14 +151,16 @@ class VectorStore:
         for chunk_id, document, metadata, distance in zip(
             ids, documents, metadatas, distances, strict=True
         ):
-            matches.append(
-                {
-                    "chunk_id": chunk_id,
-                    "text": document,
-                    "source": metadata.get("source", "unknown"),
-                    "distance": distance,
-                }
-            )
+            match: dict[str, Any] = {
+                "chunk_id": chunk_id,
+                "text": document,
+                "source": metadata.get("source", "unknown"),
+                "distance": distance,
+            }
+            for field in ("parent_id", "parent_start", "parent_end"):
+                if field in metadata:
+                    match[field] = metadata[field]
+            matches.append(match)
 
         return matches
 

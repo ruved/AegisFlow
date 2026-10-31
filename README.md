@@ -110,7 +110,7 @@ A verified answer returns structured, server-validated citation references. If e
 
 The FastAPI application object is `aegisflow.api:app`. Health and readiness behavior, request bounds, timeouts, and safe error mapping are implemented in [api.py](src/aegisflow/api.py).
 
-## Managed workflow runs
+## Week 5: Run lifecycle and recovery
 
 Start the API and create a managed workflow with an idempotency key:
 
@@ -121,7 +121,11 @@ curl.exe -N http://127.0.0.1:8000/v1/runs/<run-id>/events
 curl.exe http://127.0.0.1:8000/v1/runs/<run-id>
 ```
 
-The same idempotency key returns the original run. Events have persistent sequence IDs and can be replayed with `Last-Event-ID`. See [the recovery guide](docs/recovery.md) for cancellation, resume, crash behavior, and the at-least-once guarantee.
+The same idempotency key returns the original run. Events have persistent sequence IDs and can be replayed with `Last-Event-ID`. Cancel a run with `POST /v1/runs/<run-id>/cancel`; resume a failed or cancelled run with `POST /v1/runs/<run-id>/resume`. Run records/events persist at `runtime/runs.sqlite3`; LangGraph checkpoints persist at `runtime/checkpoints.sqlite3`.
+
+Recovery resumes from the last graph checkpoint and provides **at-least-once** execution: a node interrupted before its checkpoint can run again. Cancellation is cooperative, so a model request already in flight may finish before the run stops. SQLite is for a single local process. The tests cover idempotency, SSE reconnect replay, checkpoint resume after an injected retrieval failure, and cancellation before retrieval. The full six-scenario repeated fault campaign and captured crash-resume screencast remain outstanding. See [the recovery guide](docs/recovery.md) for the reproduction steps and guarantees.
+
+Week 5 verification: 117 pytest tests passed; Ruff lint/format checks and mypy passed.
 
 ## Development checks
 

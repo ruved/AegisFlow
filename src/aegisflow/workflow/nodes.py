@@ -27,10 +27,15 @@ Retriever = Callable[[str, int, str | Path], list[dict[str, Any]]]
 StructuredCaller = Callable[..., StructuredCall]
 
 
+class WorkflowCancelled(Exception):
+    """Raised when cancellation arrives immediately before a model call."""
+
+
 @dataclass(frozen=True)
 class WorkflowServices:
     retrieve: Retriever = retrieve_sync
     structured_call: StructuredCaller = call_structured
+    is_cancelled: Callable[[str], bool] = lambda _run_id: False
 
 
 @dataclass(frozen=True)
@@ -59,6 +64,8 @@ def build_nodes(
         schema: type,
         planner: bool = False,
     ) -> tuple[Any, dict[str, Any]]:
+        if services.is_cancelled(state.get("run_id", "")):
+            raise WorkflowCancelled
         call = services.structured_call(
             model=state.get("planner_model", state.get("model", CHAT_MODEL))
             if planner
@@ -104,6 +111,8 @@ def build_nodes(
         retrieved: list[dict[str, Any]] = []
         seen: set[str] = set()
         for subquestion in state.get("subquestions", [state["question"]])[:3]:
+            if services.is_cancelled(state.get("run_id", "")):
+                return {"next_node": "cancelled", "cancelled": True}
             for chunk in services.retrieve(
                 subquestion, state.get("top_k", 3), store_path
             ):
@@ -371,6 +380,9 @@ def build_nodes(
         }
 
     def guard(state: RunState) -> dict[str, Any]:
+        run_id = state.get("run_id", "")
+        if services.is_cancelled(run_id):
+            return {"next_node": "cancelled", "cancelled": True}
         next_node: NextNode = state.get("next_node", "planner")
         reason: str | None = None
         if state.get("steps", 0) >= state.get("max_steps", limits.max_steps):
@@ -387,6 +399,9 @@ def build_nodes(
             }
         return {"next_node": next_node}
 
+    def cancelled(state: RunState) -> dict[str, Any]:
+        return {"cancelled": True, "terminal": True, "next_node": "cancelled"}
+
     return {
         "planner": planner,
         "retrieve": retrieve,
@@ -396,6 +411,7 @@ def build_nodes(
         "rewriter": rewriter,
         "finish": finish,
         "abstain": abstain,
+        "cancelled": cancelled,
         "guard": guard,
     }
 

@@ -12,6 +12,7 @@ NextNode = Literal[
     "rewriter",
     "finish",
     "abstain",
+    "cancelled",
 ]
 
 
@@ -44,6 +45,7 @@ class RunState(TypedDict, total=False):
     next_node: NextNode
     terminal: bool
     abstained: bool
+    cancelled: bool
     abstention_reason: str
     loop_detected: bool
     steps: Annotated[int, operator.add]

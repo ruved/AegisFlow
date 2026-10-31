@@ -34,5 +34,6 @@ chroma_db/
 chroma_db_eval/
 chroma_db_chunking/
 chroma_db_w3/
+runtime/
 __pycache__/
 .pytest_cache/

@@ -7,7 +7,7 @@ AegisFlow is a local-first retrieval-augmented generation (RAG) prototype for an
 1. **Ingest:** parse Markdown, text, logs, and HTML; split Markdown into heading-aware parent passages and smaller child matches; embed children with Ollama; store vectors in Chroma and text/parent metadata in SQLite FTS5.
 2. **Retrieve:** run dense and lexical search concurrently, merge their rankings with reciprocal-rank fusion (RRF, constant 60), hydrate parent passages, and retain the matched child excerpt.
 3. **Verify and answer:** apply initial retrieval gates (maximum RRF score 0.015 and best cosine distance 0.82), then ask Qwen 3.5 4B whether the matched evidence is sufficient. If not, return an abstention with missing information. If sufficient, Gemma 3 4B generates structured claims with validated evidence IDs.
-4. **Serve:** FastAPI provides `/health`, `/ready`, and `/ask`. Ask responses include `answer`, `sources`, `citations`, `abstained`, and `missing`.
+4. **Serve:** FastAPI provides `/health`, `/ready`, `/ask`, and a persistent run API at `/v1/runs`. Run records, replayable SSE events, cancellation, and recovery are described in [recovery.md](docs/recovery.md).
 
 The experimental LangGraph path separates planning, retrieval, evidence-only analysis, reporting, verification, and bounded retry/abstention. `RunState` is a `TypedDict`; each model node validates its JSON result with Pydantic. JSON logs carry `run_id`, node duration, reported or estimated token counts, and cache status. Workflow callers use `aegisflow.workflow.run_workflow`; LangGraph assembly stays in `workflow/graph.py`.
 
@@ -109,6 +109,19 @@ A verified answer returns structured, server-validated citation references. If e
 ```
 
 The FastAPI application object is `aegisflow.api:app`. Health and readiness behavior, request bounds, timeouts, and safe error mapping are implemented in [api.py](src/aegisflow/api.py).
+
+## Managed workflow runs
+
+Start the API and create a managed workflow with an idempotency key:
+
+```powershell
+uv run uvicorn aegisflow.api:app
+curl.exe -X POST http://127.0.0.1:8000/v1/runs -H "Content-Type: application/json" -H "Idempotency-Key: demo-1" -d '{"question":"What caused the payment timeout?","top_k":3}'
+curl.exe -N http://127.0.0.1:8000/v1/runs/<run-id>/events
+curl.exe http://127.0.0.1:8000/v1/runs/<run-id>
+```
+
+The same idempotency key returns the original run. Events have persistent sequence IDs and can be replayed with `Last-Event-ID`. See [the recovery guide](docs/recovery.md) for cancellation, resume, crash behavior, and the at-least-once guarantee.
 
 ## Development checks
 

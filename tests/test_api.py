@@ -20,6 +20,28 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_api_key_protects_question_endpoints(monkeypatch):
+    monkeypatch.setattr(api.app.state, "api_key", "test-key")
+    monkeypatch.setattr(
+        api,
+        "generate_answer",
+        lambda query, k: {
+            "answer": "ok",
+            "sources": [],
+            "citations": [],
+            "abstained": False,
+            "missing": [],
+        },
+    )
+    assert client.get("/health").status_code == 200
+    denied = client.post("/ask", json={"question": "test"})
+    assert denied.status_code == 401
+    allowed = client.post(
+        "/ask", json={"question": "test"}, headers={"X-API-Key": "test-key"}
+    )
+    assert allowed.status_code == 200
+
+
 def test_readiness_reports_healthy_dependencies(monkeypatch):
     monkeypatch.setattr(api, "check_ollama", lambda: None)
     monkeypatch.setattr(api, "check_vector_store", lambda path: None)

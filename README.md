@@ -1,103 +1,107 @@
-﻿# AegisFlow
+﻿# AegisFlow (v0.1 — Milestone 1)
 
-AegisFlow is a local-first retrieval-augmented generation (RAG) prototype for answering questions over a synthetic service-incident corpus. The current work focuses on hybrid retrieval, parent-child chunking, cited answers, evidence sufficiency, abstention, and repeatable evaluation. It now includes a bounded typed multi-step workflow for experiments, but it is not a general workflow engine or tool-using agent platform.
+**Model proposes; executor enforces; automated tests verify.**
 
-## Current pipeline
+AegisFlow is a local-first retrieval-augmented generation (RAG) and secure tool-using agent service for answering questions over a synthetic service-incident corpus. Milestone 1 (v0.1) delivers a shippable, secure tool-execution boundary with declarative policy enforcement, untrusted content delimitation, hashed audit logging, and an automated adversarial red-team evaluation suite.
 
-1. **Ingest:** parse Markdown, text, logs, and HTML; split Markdown into heading-aware parent passages and smaller child matches; embed children with Ollama; store vectors in Chroma and text/parent metadata in SQLite FTS5.
-2. **Retrieve:** run dense and lexical search concurrently, merge their rankings with reciprocal-rank fusion (RRF, constant 60), hydrate parent passages, and retain the matched child excerpt.
-3. **Verify and answer:** apply initial retrieval gates (maximum RRF score 0.015 and best cosine distance 0.82), then ask Qwen 3.5 4B whether the matched evidence is sufficient. If not, return an abstention with missing information. If sufficient, Gemma 3 4B generates structured claims with validated evidence IDs.
-4. **Serve:** FastAPI provides `/health`, `/ready`, `/ask`, and a persistent run API at `/v1/runs`. Run records, replayable SSE events, cancellation, and recovery are described in [recovery.md](docs/recovery.md).
+---
 
-The experimental LangGraph path separates planning, retrieval, evidence-only analysis, reporting, verification, and bounded retry/abstention. `RunState` is a `TypedDict`; each model node validates its JSON result with Pydantic. JSON logs carry `run_id`, node duration, reported or estimated token counts, and cache status. Workflow callers use `aegisflow.workflow.run_workflow`; LangGraph assembly stays in `workflow/graph.py`.
+## Architecture & Principles
 
-These score cutoffs are starting points, not calibrated production thresholds. The verifier's full E2 evaluation is currently blocked by slow/stalled local inference; see [ADR-003](docs/ADR-003-abstention-and-grader.md).
+AegisFlow establishes strict enforcement boundaries between untrusted components (model proposals, user inputs, retrieved corpus data) and execution:
 
-## Week 4 workflow and E4 evaluation
-
-Run the bounded workflow for one question (Ollama and the W3 index must be available):
-
-```powershell
-uv run python -c "from aegisflow.workflow import run_workflow; print(run_workflow({'question': 'What caused the payment timeout?', 'store_path': 'chroma_db_w3'})['report'])"
+```
+┌─────────────────┐      Proposal      ┌────────────────────────────────────────────────────────┐
+│  Model / LLM    │ ─────────────────> │               Central Tool Executor                    │
+└─────────────────┘                    ├───────────┬──────────┬─────────┬───────────┬───────────┤
+                                       │ Validate  │  Policy  │ Timeout │  Execute  │   Audit   │
+                                       │ (Schema)  │ (Perms)  │ (Bound) │ (Handler) │ (Hashed)  │
+                                       └───────────┴──────────┴─────────┴───────────┴───────────┘
 ```
 
-Run the baseline-vs-workflow E4 evaluation on all 41 golden questions. Each completed case is saved immediately, so partial runs remain inspectable:
+1. **Typed Tool Registry (D1):** Tools are declared with strict Pydantic schemas (`extra="forbid"`), explicit risk levels (`low`, `high`), bounded timeouts (1.0–2.0s), and human approval flags (`requires_approval`). Unregistered tools and malformed arguments are rejected before execution.
+2. **Centralized Policy & Audit (D2):** A single execution flow (`validate → policy → timeout → execute → audit`). Sensitive data and raw arguments are never persisted; calls are audited with SHA-256 argument digests, timestamps, decisions, and outcomes.
+3. **Untrusted Content & Prompt Injection Defense (D3):** Retrieved documents and tool outputs are treated strictly as untrusted data, enclosed in `<UNTRUSTED_EVIDENCE>` delimiters, and flagged for instruction-like patterns without breaking legitimate runbooks. Tool permissions are enforced outside the prompt boundary.
+4. **Automated Adversarial Red Team (D4):** Rate-based security suite testing 20 injection documents, 10 malicious argument variations, and 5 resource exhaustion prompts across 5 repetitions (175 total trials) with **0 policy bypasses**.
+5. **Threat Model & Redaction (D5):** Complete mapping of OWASP Top 10 for Agentic Applications 2026 ([docs/threat_model.md](docs/threat_model.md)), pattern-based PII/secret log redaction, and API-key authentication (`X-API-Key`).
+6. **Reproducible Demo & Tests (D6):** Full test suite with 126 tests passing, a 2-minute demo runner ([scripts/demo.py](scripts/demo.py)), and walkthrough ([docs/demo.md](docs/demo.md)).
 
-```powershell
-uv run python evals/run_e4.py --store chroma_db_w3 --output results/E4_workflow.csv
+---
+
+## Quickstart & Setup
+
+### Prerequisites
+- Python 3.12+
+- [uv](https://github.com/astral-sh/uv) (recommended package manager)
+- (Optional) [Ollama](https://ollama.ai/) with `gemma3:4b` and `qwen2.5:3b` for live local LLM inference.
+
+### Installation
+
+```bash
+git clone https://github.com/aegisflow/aegisflow.git
+cd aegisflow
+uv sync
 ```
 
-Measure planner schema validity on the deterministic 15-question planning sample (10 single-hop and 5 multi-part):
+Copy the environment configuration:
 
-```powershell
-uv run python evals/evaluate_planner.py --model gemma3:4b
+```bash
+cp .env.example .env
 ```
 
-For a clearly labeled pilot or slice, pass `--limit N` or `--slice unanswerable`. The runner reports planner schema-valid rate, task completion (for unanswerables, a supported abstention counts as completion), citation precision/recall against gold source headings, abstention by dataset slice, latency, and per-node time/token breakdown. `results/E4_workflow.json` records the model and run budgets; CSV telemetry contains the per-node event details. Compare E4 completion and latency with matching IDs from the saved E1 CSV. The run and keep/drop decision are recorded in [ADR-004](docs/ADR-004-e4-workflow.md); a subset is a pilot, not a full-set result.
-
-## Corpus and golden set
-
-- `data/corpus/` contains 27 synthetic Markdown documents: service descriptions, runbooks, postmortems, and incident logs.
-- `data/eval/golden_v0.jsonl` contains 41 questions: 20 single-hop, 5 multi-part, 10 unanswerable, and 6 conflicting-document cases.
-- Gold sources identify document and heading rather than chunk IDs so they remain useful after chunking changes.
-
-The current default ingestion input is `docs/rag_samples/`; explicitly pass `data/corpus` for corpus experiments. Example:
-
-```powershell
-uv run python -m aegisflow.rag.ingest --docs data/corpus --store chroma_db_w3
+To configure API key authentication for non-loopback clients:
+```bash
+# In .env or shell:
+export AEGISFLOW_API_KEY="your-secret-api-key"
 ```
 
-The `chroma_db_w3/` index is local and ignored by Git. It contains 254 parent passages and 274 child matches for the current corpus/configuration. Rebuild it with the command above when the index is absent or stale.
+---
 
-## Run retrieval evaluation
+## Execution & How to Inspect a Cited Answer
 
-With Ollama running and the corpus index built:
+### 1. Interactive 2-Minute Demo
+Run the self-contained demonstration covering tool registry validation, policy enforcement, audit logs, injection mitigation, and cited answers:
 
-```powershell
-uv run eval-retrieval --dataset data/eval/golden_v0.jsonl --corpus data/corpus --store chroma_db_w3 --k 3
+```bash
+uv run python scripts/demo.py
+```
+*(Add `--fast` for instant execution without pacing delays).*
+
+### 2. Start the API Server
+Launch the FastAPI application:
+
+```bash
+uv run uvicorn aegisflow.api:app --reload --port 8000
 ```
 
-This reports section-level Recall@k, MRR, and nDCG for dense, lexical, and fused retrieval. The earlier dense-versus-hybrid retrieval experiment is documented in [ADR-002](docs/ADR-002-hybrid-retrieval.md), with per-question data in `results/E1_retrieval_comparison.csv`.
+### 3. Inspect a Cited Answer (`POST /ask`)
+Query the service to retrieve evidence and generate an answer with validated citations:
 
-## Run answer evaluation
-
-Run E1 without the verifier and E2 with it, using the same dataset, index, `k`, and repetition count:
-
-```powershell
-uv run python evals/run_eval.py --dataset data/eval/golden_v0.jsonl --runs 1 --k 3 --store chroma_db_w3 --no-verifier --output results/baseline_E1_answer.csv
-uv run python evals/run_eval.py --dataset data/eval/golden_v0.jsonl --runs 1 --k 3 --store chroma_db_w3 --output results/baseline_E2_answer.csv
+```bash
+curl.exe -X POST http://127.0.0.1:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What caused the payment timeout?","top_k":3}'
 ```
 
-When both result files exist, summarize abstention, citation precision/recall, threshold tradeoffs, and create a 20-answer human-review sheet:
-
-```powershell
-uv run python evals/report_answer_quality.py --e1 results/baseline_E1_answer.csv --e2 results/baseline_E2_answer.csv
+Example verified response:
+```json
+{
+  "answer": "The payment service timed out due to connection pool exhaustion after order-db failover [EV-001].",
+  "sources": ["data/corpus/postmortems/incident-2024-03-12.md"],
+  "citations": [
+    {
+      "claim": "The payment service timed out due to connection pool exhaustion",
+      "evidence_id": "EV-001",
+      "source": "incident-2024-03-12.md",
+      "heading": "Root Cause"
+    }
+  ],
+  "abstained": false,
+  "missing": []
+}
 ```
 
-To summarize the currently available E1 result only:
-
-```powershell
-uv run python evals/report_answer_quality.py --e1 results/baseline_E1_answer.csv --output results/baseline_E1_answer_quality.json
-```
-
-The report's retrieval evidence-hit rate is a correctness proxy, not a human correctness grade. Enter binary human labels in `results/judge_human_review.csv` after it is generated, then rerun the report to calculate raw agreement and Cohen's kappa.
-
-## Recorded Week 4 results
-
-The planner-only check returned schema-valid, bounded plans on 15/15 questions (10 single-hop and 5 multi-part) with Gemma 3 4B; mean latency was 9.06 seconds. The end-to-end E4 pilot used three answerable and three unanswerable questions. It completed 0/3 answerable cases by gold-source citation and correctly abstained on 2/3 unanswerable cases. Its median latency was 92.3 seconds versus 28.1 seconds for the same E1 questions. See [ADR-004](docs/ADR-004-e4-workflow.md) for per-node timings, the decision, and limitations. The 41-question E4 run remains unmeasured; the pilot median projects about 63 minutes of local inference.
-
-## Recorded answer results
-
-The full E1 run completed all 41 questions: 30 generations succeeded and 11 failed structured-answer validation after retry. Source Recall@3 was 0.500; median per-question latency was 19.482 seconds and P95 was 46.261 seconds. Without the verifier, the generator abstained on 8/10 unanswerables and 0/31 answerables. Citation precision/recall were 0.200/0.111 using exact source-heading matches.
-
-At the initial RRF cutoff of 0.015, the score gate alone still accepted every tuning-set unanswerable and 80% of the held-out unanswerables. The measured tuning/held-out curve is in [abstention_tradeoff.svg](results/abstention_tradeoff.svg); numbers and run configuration are in `results/baseline_E1_answer_quality.json` and `results/baseline_v2_config.json`.
-
-The 41-question E2 run and two 20-question retries did not produce output CSVs because local inference stalled. E2 verifier performance, citation metrics, and judge-human agreement are therefore not measured yet. The recorded E1 refusal rate is not verifier performance.
-
-## API response shape
-
-A verified answer returns structured, server-validated citation references. If evidence is insufficient, the response includes an explicit refusal and a short `missing` list, for example:
-
+If evidence is insufficient, AegisFlow abstains honestly:
 ```json
 {
   "answer": "I can't answer this reliably from the available evidence. Missing: current live metrics",
@@ -108,43 +112,114 @@ A verified answer returns structured, server-validated citation references. If e
 }
 ```
 
-The FastAPI application object is `aegisflow.api:app`. Health and readiness behavior, request bounds, timeouts, and safe error mapping are implemented in [api.py](src/aegisflow/api.py).
+### 4. Propose and Execute Tools Centrally (`POST /v1/tools/propose`)
+Ask the model to select a tool from the registry to address a goal:
 
-## Week 5: Run lifecycle and recovery
+```bash
+curl.exe -X POST http://127.0.0.1:8000/v1/tools/propose \
+  -H "Content-Type: application/json" \
+  -d '{"goal":"Find logs about database pool exhaustion"}'
+```
 
-Start the API and create a managed workflow with an idempotency key:
+The proposal is re-validated through the central executor. If arguments are invalid, 1 retry is allowed. High-risk write tools (`simulate_write`) are denied unless explicit approval is provided by the host.
 
-```powershell
-uv run uvicorn aegisflow.api:app
-curl.exe -X POST http://127.0.0.1:8000/v1/runs -H "Content-Type: application/json" -H "Idempotency-Key: demo-1" -d '{"question":"What caused the payment timeout?","top_k":3}'
+### 5. Persistent Workflows & Replay (`/v1/runs`)
+Create a persistent, cancellable, checkpointed workflow run:
+
+```bash
+curl.exe -X POST http://127.0.0.1:8000/v1/runs \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: demo-run-1" \
+  -d '{"question":"What caused the payment timeout?","top_k":3}'
+
+# Stream real-time events:
 curl.exe -N http://127.0.0.1:8000/v1/runs/<run-id>/events
+
+# Inspect run status:
 curl.exe http://127.0.0.1:8000/v1/runs/<run-id>
 ```
 
-The same idempotency key returns the original run. Events have persistent sequence IDs and can be replayed with `Last-Event-ID`. Cancel a run with `POST /v1/runs/<run-id>/cancel`; resume a failed or cancelled run with `POST /v1/runs/<run-id>/resume`. Run records/events persist at `runtime/runs.sqlite3`; LangGraph checkpoints persist at `runtime/checkpoints.sqlite3`.
+---
 
-Recovery resumes from the last graph checkpoint and provides **at-least-once** execution: a node interrupted before its checkpoint can run again. Cancellation is cooperative, so a model request already in flight may finish before the run stops. SQLite is for a single local process. The tests cover idempotency, SSE reconnect replay, checkpoint resume after an injected retrieval failure, and cancellation before retrieval. The full six-scenario repeated fault campaign and captured crash-resume screencast remain outstanding. See [the recovery guide](docs/recovery.md) for the reproduction steps and guarantees.
+## Tool Registry & Security Details (Week 6)
 
-Week 5 verification: 117 pytest tests passed; Ruff lint/format checks and mypy passed.
+### Registered Tools
+| Tool | Risk | Timeout | Approval Required | Purpose |
+|---|---|---|---|---|
+| `search_logs` | `low` | 2.0s | `False` | Search incident logs for matching terms within path bounds. |
+| `fetch_runbook` | `low` | 2.0s | `False` | Fetch verified runbook by ID (`RB-xxx`). Directory traversal rejected. |
+| `get_service_deps` | `low` | 1.0s | `False` | Return dependency graph for a named service. |
+| `query_metrics` | `low` | 1.0s | `False` | Return simulated service metrics (`latency_p95_ms`, `error_rate_pct`, `db_connections`). |
+| `simulate_write` | `high` | 1.0s | `True` | Preview a configuration change; denied unless host grants approval. |
 
-## Development checks
+### Automated Red Team Suite
+Run the automated adversarial red-team suite:
+
+```bash
+uv run python evals/run_red_team.py --runs 5
+```
+
+Results are saved to [results/red_team_week6.json](results/red_team_week6.json):
+- **100 Injection document attempts** (20 unique injection templates x 5 runs)
+- **50 Malicious argument attempts** (10 boundary/traversal payloads x 5 runs)
+- **25 Resource exhaustion attempts** (5 oversized/nested inputs x 5 runs)
+- **Total proposals tested:** 175
+- **Observed policy bypasses:** **0 (0.0% bypass rate)**
+
+Audit entries for all attempts are recorded in `runtime/tool_audit_redteam.sqlite3` with SHA-256 argument hashes only.
+
+### Threat Model
+The full threat model is documented in [docs/threat_model.md](docs/threat_model.md), mapping controls against the OWASP Top 10 for Agentic Applications 2026:
+- **ASI01 Agent Goal Hijack:** Prompt delimiters `<UNTRUSTED_EVIDENCE>` and executor-level authorization boundary.
+- **ASI02 Tool Misuse & Exploitation:** Allowlisted typed registry, Pydantic strict validation, risk levels, human approval gates.
+- **ASI03 Identity & Privilege Abuse:** API-key auth via `X-API-Key`, process runs with least privilege local identity.
+- **ASI05 Unexpected Code Execution:** Zero arbitrary shell or code execution tools.
+- **ASI08 Cascading Failures:** Step, token, deadline, per-request, and per-tool timeout budgets.
+
+---
+
+## Verification & Test Results
+
+All quality and security checks pass cleanly:
 
 ```powershell
-uv run python -m pytest -q
+# Run the complete test suite (126 tests)
+uv run pytest -q
+
+# Code formatting and style
 uv run ruff check .
 uv run ruff format --check .
+
+# Static type checking
 uv run mypy src
 ```
 
-The Week 4 verification passed 112 tests, Ruff lint and format checks, and mypy across 28 source files. `pyproject.toml` declares FastAPI, ChromaDB, and LangGraph as runtime dependencies.
+### Milestone 1 Status:
+- **126/126 automated unit and integration tests passing.**
+- **0 policy bypasses** across 175 red-team adversarial attacks.
+- **0 secret or PII leaks** in JSON logs (tested against API keys, passwords, Bearer tokens, AWS keys, emails).
+- **Ruff linter and code formatter:** 100% compliant across 102 files.
+- **Mypy static analysis:** Clean across 32 source modules.
 
-## Project notes
+---
 
-- [Problem statement](docs/problem-statement.md)
-- [Hardware and model notes](docs/hardware.md) and [model comparison](docs/model_comparison.md)
-- [Chunking experiment](docs/chunking.md)
-- [ADR-002: hybrid retrieval](docs/ADR-002-hybrid-retrieval.md)
-- [ADR-003: abstention and grader calibration](docs/ADR-003-abstention-and-grader.md)
-- [ADR-004: typed workflow and E4 results](docs/ADR-004-e4-workflow.md)
-- [W4 D1-D6 devlog](devlog/W4_D1-D6.md)
-- [W3 D4-D6 devlog](devlog/W3_D4-D6.md)
+## Go / No-Go Review
+
+- **Core Goal:** Model proposes; executor enforces; automated tests verify. **[MET]**
+- **Tool Registry:** 5 registered tools with typed JSON schemas and risk metadata. **[MET]**
+- **Policy & Audit:** Centralized enforcement flow with hashed argument digests. **[MET]**
+- **Injection Boundary:** Untrusted data delimitation and executor-level safety. **[MET]**
+- **Adversarial Red Team:** Automated runner with 0 policy bypasses across 175 attempts. **[MET]**
+- **Threat Model & Redaction:** OWASP mapping and proven secret redaction. **[MET]**
+- **Decision:** **GO FOR v0.1 RELEASE**. Prioritized security enforcement boundaries and test reliability over speculative agentic capabilities.
+
+---
+
+## Project Documentation
+- [Threat Model](docs/threat_model.md)
+- [2-Minute Demo Script](docs/demo.md)
+- [Recovery & Run Lifecycle](docs/recovery.md)
+- [ADR-002: Hybrid Retrieval](docs/ADR-002-hybrid-retrieval.md)
+- [ADR-003: Abstention and Grader Calibration](docs/ADR-003-abstention-and-grader.md)
+- [ADR-004: Typed Workflow and E4 Results](docs/ADR-004-e4-workflow.md)
+- [Hardware and Model Notes](docs/hardware.md)

@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
 
+from aegisflow.security_tools import redact_sensitive
+
 RUN_ID: ContextVar[str] = ContextVar("aegisflow_run_id", default="-")
 LOGGER_NAME = "aegisflow.workflow"
 
@@ -20,7 +22,7 @@ class JsonRunFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "run_id": getattr(record, "run_id", RUN_ID.get()),
-            "message": record.getMessage(),
+            "message": redact_sensitive(record.getMessage()),
         }
         for key in (
             "node",

@@ -58,6 +58,7 @@ def test_run_api_idempotency_completion_and_sse_reconnect(
     monkeypatch.setattr("aegisflow.run_manager.run_workflow_async", fake_run)
     api.app.state.run_db_path = tmp_path / "runs.sqlite3"
     api.app.state.checkpoint_path = tmp_path / "checkpoints.sqlite3"
+    api.app.state.tool_audit_path = tmp_path / "tool-audit.sqlite3"
     with TestClient(api.app) as client:
         created = client.post(
             "/v1/runs",
@@ -85,6 +86,7 @@ def test_run_api_idempotency_completion_and_sse_reconnect(
 def test_run_api_validates_idempotency_key(tmp_path: Path) -> None:
     api.app.state.run_db_path = tmp_path / "runs.sqlite3"
     api.app.state.checkpoint_path = tmp_path / "checkpoints.sqlite3"
+    api.app.state.tool_audit_path = tmp_path / "tool-audit.sqlite3"
     with TestClient(api.app) as client:
         response = client.post("/v1/runs", json={"question": "question"})
         assert response.status_code == 422

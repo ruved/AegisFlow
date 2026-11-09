@@ -235,3 +235,4 @@ uv run mypy src
 - [ADR-003: Abstention and Grader Calibration](docs/ADR-003-abstention-and-grader.md)
 - [ADR-004: Typed Workflow and E4 Results](docs/ADR-004-e4-workflow.md)
 - [Hardware and Model Notes](docs/hardware.md)
+- [W6 D1-D6 devlog](devlog/W6_D1-D6.md)

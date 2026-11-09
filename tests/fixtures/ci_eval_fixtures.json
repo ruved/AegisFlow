@@ -1,0 +1,92 @@
+[
+  {
+    "id": "CI_G001",
+    "question": "When Order Service runs out of database connections, which diagnostic categories should be distinguished?",
+    "gold_sections": [["runbooks/RB-001-db-pool-exhaustion.md", "4. Diagnosis"]],
+    "retrieved_chunks": [
+      {
+        "source": "runbooks/RB-001-db-pool-exhaustion.md",
+        "heading": "4. Diagnosis",
+        "text": "Slow queries, connection leaks, traffic spikes, and database saturation."
+      },
+      {
+        "source": "services/order-service.md",
+        "heading": "Dependencies",
+        "text": "Order Service connects to order-db via connection pool."
+      },
+      {
+        "source": "logs/order-db-pool-incident.log.md",
+        "heading": "Log excerpt",
+        "text": "Active connections: 50, Idle connections: 0."
+      }
+    ]
+  },
+  {
+    "id": "CI_G002",
+    "question": "At the recorded peak for order-01, what were the active, idle, and maximum database-pool counts?",
+    "gold_sections": [["logs/order-db-pool-incident.log.md", "Log excerpt"]],
+    "retrieved_chunks": [
+      {
+        "source": "logs/order-db-pool-incident.log.md",
+        "heading": "Log excerpt",
+        "text": "Active connections: 50, Idle: 0, Maximum: 50."
+      },
+      {
+        "source": "runbooks/RB-001-db-pool-exhaustion.md",
+        "heading": "4. Diagnosis",
+        "text": "Diagnosis steps for connection exhaustion."
+      }
+    ]
+  },
+  {
+    "id": "CI_G003",
+    "question": "What initiating pattern explains the database load increase in the product-cache incident?",
+    "gold_sections": [["postmortems/PM-002-cache-stampede.md", "4. Root cause"]],
+    "retrieved_chunks": [
+      {
+        "source": "postmortems/PM-002-cache-stampede.md",
+        "heading": "4. Root cause",
+        "text": "Synchronized cache expiration triggered a cache stampede on the backing database."
+      },
+      {
+        "source": "runbooks/RB-002-redis-cache-stampede.md",
+        "heading": "Mitigation",
+        "text": "Add jitter to cache TTLs."
+      }
+    ]
+  },
+  {
+    "id": "CI_G004",
+    "question": "Which external dependency slowed the consumers involved in PM-003?",
+    "gold_sections": [["postmortems/PM-003-kafka-consumer-backlog.md", "4. Root cause"]],
+    "retrieved_chunks": [
+      {
+        "source": "services/notification-service.md",
+        "heading": "Dependencies",
+        "text": "Notification service calls external email and SMS providers."
+      },
+      {
+        "source": "postmortems/PM-003-kafka-consumer-backlog.md",
+        "heading": "4. Root cause",
+        "text": "Third-party email notification provider latency degraded consumer throughput."
+      }
+    ]
+  },
+  {
+    "id": "CI_G005",
+    "question": "Which release introduced the query regression documented in PM-004?",
+    "gold_sections": [["postmortems/PM-004-bad-deployment.md", "4. Root cause"]],
+    "retrieved_chunks": [
+      {
+        "source": "postmortems/PM-004-bad-deployment.md",
+        "heading": "4. Root cause",
+        "text": "Release 2.8.0 introduced an unindexed join query."
+      },
+      {
+        "source": "runbooks/RB-004-bad-deployment.md",
+        "heading": "Rollback",
+        "text": "Steps to roll back deployment."
+      }
+    ]
+  }
+]

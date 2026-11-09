@@ -9,6 +9,8 @@ from typing import Any, cast
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
+from aegisflow.metrics import record_error, record_node_execution, record_retry
+from aegisflow.tracing import trace_node
 from aegisflow.workflow.models import BudgetExceeded
 from aegisflow.workflow.nodes import (
     WorkflowCancelled,
@@ -52,68 +54,95 @@ def instrument_node(
         prompt_tokens = 0
         completion_tokens = 0
         tokens_estimated = False
-        try:
-            update = function(state)
-        except BudgetExceeded as exc:
-            status = "budget_exceeded"
-            update = {
-                "next_node": "abstain",
-                "abstention_reason": str(exc),
-                "missing": ["More token budget for the workflow step."],
-            }
-        except WorkflowCancelled:
-            status = "cancelled"
-            update = {"next_node": "cancelled", "cancelled": True}
-        except Exception:
-            status = "error"
-            duration_ms = (time.perf_counter() - started) * 1000
-            logger.exception(
-                "workflow node failed",
-                extra={
-                    "node": name,
-                    "duration_ms": round(duration_ms, 3),
-                    "status": status,
-                    "run_id": state.get("run_id", "-"),
-                },
-            )
-            raise
-
-        prompt_tokens = _as_nonnegative_int(update.pop("_prompt_tokens", 0))
-        completion_tokens = _as_nonnegative_int(update.pop("_completion_tokens", 0))
-        tokens_estimated = bool(update.pop("_tokens_estimated", False))
-        cache_hit = bool(update.pop("_cache_hit", False))
-        duration_ms = (time.perf_counter() - started) * 1000
         run_id = state.get("run_id", "-")
-        event: TelemetryEvent = {
-            "event_id": f"{run_id}:{name}:{state.get('steps', 0) + 1}",
-            "run_id": run_id,
-            "node": name,
-            "duration_ms": round(duration_ms, 3),
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "cache_hit": cache_hit,
-            "tokens_estimated": tokens_estimated,
-            "status": status,
-        }
-        logger.info(
-            "workflow node completed",
-            extra={
+        with trace_node(name, run_id=run_id) as span:
+            try:
+                update = function(state)
+            except BudgetExceeded as exc:
+                status = "budget_exceeded"
+                record_error("workflow", "budget_exceeded")
+                span.set_attribute("workflow.status", status)
+                span.set_attribute("workflow.abstention_reason", str(exc))
+                update = {
+                    "next_node": "abstain",
+                    "abstention_reason": str(exc),
+                    "missing": ["More token budget for the workflow step."],
+                }
+            except WorkflowCancelled:
+                status = "cancelled"
+                span.set_attribute("workflow.status", status)
+                update = {"next_node": "cancelled", "cancelled": True}
+            except Exception as exc:
+                status = "error"
+                duration_ms = (time.perf_counter() - started) * 1000
+                record_error("workflow", type(exc).__name__)
+                logger.exception(
+                    "workflow node failed",
+                    extra={
+                        "node": name,
+                        "duration_ms": round(duration_ms, 3),
+                        "status": status,
+                        "run_id": run_id,
+                    },
+                )
+                raise
+
+            prompt_tokens = _as_nonnegative_int(update.pop("_prompt_tokens", 0))
+            completion_tokens = _as_nonnegative_int(update.pop("_completion_tokens", 0))
+            tokens_estimated = bool(update.pop("_tokens_estimated", False))
+            cache_hit = bool(update.pop("_cache_hit", False))
+            duration_s = time.perf_counter() - started
+            duration_ms = duration_s * 1000
+
+            span.set_attribute("workflow.duration_ms", round(duration_ms, 3))
+            span.set_attribute("workflow.status", status)
+            span.set_attribute("workflow.prompt_tokens", prompt_tokens)
+            span.set_attribute("workflow.completion_tokens", completion_tokens)
+            span.set_attribute("workflow.cache_hit", cache_hit)
+
+            record_node_execution(
+                node=name,
+                duration_seconds=duration_s,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cache_hit=cache_hit,
+                model=state.get("model", "unknown"),
+            )
+            if name == "rewriter":
+                record_retry("verifier_rewrite")
+            elif update.get("next_node") == "abstain":
+                record_retry("abstention")
+
+            event: TelemetryEvent = {
+                "event_id": f"{run_id}:{name}:{state.get('steps', 0) + 1}",
+                "run_id": run_id,
                 "node": name,
-                "duration_ms": event["duration_ms"],
+                "duration_ms": round(duration_ms, 3),
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "cache_hit": cache_hit,
+                "tokens_estimated": tokens_estimated,
                 "status": status,
-                "run_id": run_id,
-            },
-        )
-        update["telemetry"] = [event]
-        update["prompt_tokens"] = prompt_tokens
-        update["completion_tokens"] = completion_tokens
-        update["tokens_used"] = prompt_tokens + completion_tokens
-        if count_step:
-            update["steps"] = 1
-        return update
+            }
+            logger.info(
+                "workflow node completed",
+                extra={
+                    "node": name,
+                    "duration_ms": event["duration_ms"],
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "cache_hit": cache_hit,
+                    "status": status,
+                    "run_id": run_id,
+                },
+            )
+            update["telemetry"] = [event]
+            update["prompt_tokens"] = prompt_tokens
+            update["completion_tokens"] = completion_tokens
+            update["tokens_used"] = prompt_tokens + completion_tokens
+            if count_step:
+                update["steps"] = 1
+            return update
 
     return wrapped
 

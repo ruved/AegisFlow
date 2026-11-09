@@ -9,6 +9,7 @@ from typing import Any
 from aegisflow.rag.embeddings import embed_texts
 from aegisflow.rag.lexical_index import LexicalIndex
 from aegisflow.rag.vector_store import VectorStore
+from aegisflow.tracing import trace_retrieval
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_STORE_PATH = PROJECT_ROOT / "chroma_db"
@@ -178,18 +179,21 @@ async def retrieve(
         raise ValueError("k must be positive")
 
     candidate_limit = max(k * 3, k)
-    dense_results, lexical_results = await retrieve_ranked_lists(
-        query, k=candidate_limit, store_path=store_path
-    )
-    fused_children = reciprocal_rank_fusion(
-        dense_results,
-        lexical_results,
-        limit=candidate_limit,
-        rrf_constant=rrf_constant,
-    )
-    return await asyncio.to_thread(
-        hydrate_parent_results, fused_children, store_path, k
-    )
+    with trace_retrieval(query, k, str(store_path)) as span:
+        dense_results, lexical_results = await retrieve_ranked_lists(
+            query, k=candidate_limit, store_path=store_path
+        )
+        fused_children = reciprocal_rank_fusion(
+            dense_results,
+            lexical_results,
+            limit=candidate_limit,
+            rrf_constant=rrf_constant,
+        )
+        results = await asyncio.to_thread(
+            hydrate_parent_results, fused_children, store_path, k
+        )
+        span.set_attribute("retrieval.results_count", len(results))
+        return results
 
 
 async def retrieve_ranked_lists(

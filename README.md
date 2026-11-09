@@ -189,13 +189,59 @@ The full threat model is documented in [docs/threat_model.md](docs/threat_model.
 
 ---
 
+## Observability, UI & CI Quality Gates (Milestone 2)
+
+### OpenTelemetry Distributed Tracing
+AegisFlow instruments one coherent trace per run using standard GenAI semantic conventions:
+- **Spans:** workflow run root (`trace_workflow_run`), workflow nodes (`trace_node`), structured LLM calls (`trace_llm_call`), hybrid retrieval (`trace_retrieval`), and tool executions (`trace_tool_execution`).
+- **Semantic Attributes:** `gen_ai.request.model`, `gen_ai.usage.prompt_tokens`, `gen_ai.usage.completion_tokens`, `gen_ai.usage.total_tokens`, `tool.decision`, `tool.outcome`.
+- **Trace Inspection Endpoint:**
+  ```powershell
+  curl -H "X-API-Key: test-secret-key-12345" http://127.0.0.1:8000/v1/runs/<run_id>/trace
+  ```
+  Returns a hierarchical tree with nested spans, durations, statuses, and GenAI token usage.
+
+### Prometheus Metrics & Grafana Dashboard
+Real-time system health metrics are exposed at `/metrics` (exempt from API key auth for scrapers):
+- **Node Latency:** `aegisflow_node_duration_seconds` (histogram with buckets tuned from production latency data).
+- **Concurrency & Queues:** `aegisflow_active_runs` and `aegisflow_queue_depth` (gauges).
+- **Usage & Retries:** `aegisflow_tokens_total` (counter by model and token type), `aegisflow_workflow_retries_total` (counter by node), `aegisflow_cache_hits_total`, and `aegisflow_errors_total`.
+- **Tool Decisions:** `aegisflow_tool_calls_total` and `aegisflow_tool_duration_seconds`.
+- **Cardinatily Guarantee:** Strictly low-cardinality labels (zero `run_id` or question text in Prometheus label sets).
+- **Dashboard:** Ready-to-import Grafana dashboard JSON available at [docs/grafana_dashboard.json](docs/grafana_dashboard.json).
+
+### Streamlit Web Console
+Launch the interactive web console:
+```powershell
+uv run streamlit run ui/app.py
+```
+- **Live Execution Tab:** Submit incident queries, adjust `top_k`, watch real-time node timeline with status badges, and trigger early cancellations.
+- **Report & Evidence Panel:** Displays diagnosis, unknowns, and risk-labelled remediation steps (`[LOW]`, `[MEDIUM]`, `[HIGH]`). Clicking any cited claim highlights the exact supporting passage with character offsets computed relative to normalized text (eliminating highlight drift).
+- **Run Inspector Tab:** Inspect hierarchical OpenTelemetry span trees with live durations and GenAI token breakdowns.
+- **Tool Sandbox Tab:** Interactively test model tool proposals against the central execution boundary.
+
+### CI Quality & Evaluation Gates
+Automated GitHub Actions pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) protects against code and quality regressions:
+- **Stages:** Linting (`ruff check`) → Formatting check (`ruff format --check`) → Static typecheck (`mypy src`) → Unit test suite (`pytest -v`) → CI Evaluation Gate (`evals/ci_eval_gate.py`).
+- **GPU-Independent CI:** Evaluates pre-recorded fixture subset ([tests/fixtures/ci_eval_fixtures.json](tests/fixtures/ci_eval_fixtures.json)) to compute Recall@k and MRR against baseline thresholds.
+- **Regression Detection:** Fails the PR build if retrieval quality degrades below baseline tolerance:
+  ```powershell
+  # Normal run (passes):
+  uv run python evals/ci_eval_gate.py
+
+  # Test deliberate regression (trips gate, exit code 1):
+  uv run python evals/ci_eval_gate.py --simulate-regression
+  ```
+
+---
+
 ## Verification & Test Results
 
-All quality and security checks pass cleanly:
+All quality, security, and observability checks pass cleanly:
 
 ```powershell
-# Run the complete test suite (134 tests)
-uv run pytest -q
+# Run the complete test suite (145 tests)
+uv run pytest -v
 
 # Code formatting and style
 uv run ruff check .
@@ -203,32 +249,37 @@ uv run ruff format --check .
 
 # Static type checking
 uv run mypy src
+
+# CI Quality Gate
+uv run python evals/ci_eval_gate.py
 ```
 
-### Milestone 1 Status:
-- **134/134 automated unit and integration tests passing.**
+### Current Status:
+- **145/145 automated unit and integration tests passing.**
+- **OpenTelemetry trace hierarchy and GenAI attributes:** 100% verified.
+- **Prometheus metric cardinality & /metrics export:** 100% verified.
+- **Streamlit UI citation offset highlighting & client:** 100% verified.
+- **CI evaluation gate (baseline pass + simulated regression trip):** 100% verified.
 - **0 policy bypasses** across 175 red-team adversarial attacks.
-- **0 secret or PII leaks** in JSON logs (tested against API keys, passwords, Bearer tokens, AWS keys, emails).
-- **Ruff linter and code formatter:** 100% compliant across 104 files.
-- **Mypy static analysis:** Clean across 32 source modules.
-- **Demo session:** Verified and captured at [results/demo_transcript.txt](results/demo_transcript.txt).
+- **0 secret or PII leaks** in JSON logs.
+- **Ruff linter and code formatter:** 100% compliant across 113 files.
+- **Mypy static analysis:** Clean across 34 source modules.
 
 ---
 
 ## Go / No-Go Review
 
 - **Core Goal:** Model proposes; executor enforces; automated tests verify. **[MET]**
-- **Tool Registry:** 5 registered tools with typed JSON schemas and risk metadata. **[MET]**
-- **Policy & Audit:** Centralized enforcement flow with hashed argument digests. **[MET]**
-- **Injection Boundary:** Untrusted data delimitation and executor-level safety. **[MET]**
-- **Adversarial Red Team:** Automated runner with 0 policy bypasses across 175 attempts. **[MET]**
-- **Threat Model & Redaction:** OWASP mapping and proven secret redaction. **[MET]**
-- **Decision:** **GO FOR v0.1 RELEASE**. Prioritized security enforcement boundaries and test reliability over speculative agentic capabilities.
+- **Observability:** OpenTelemetry traces and Prometheus `/metrics` with Grafana dashboard. **[MET]**
+- **Streamlit UI:** Live timeline, drift-free cited evidence highlighting, and trace inspector. **[MET]**
+- **CI Quality Gate:** Deterministic, GPU-independent regression gate in GitHub Actions. **[MET]**
+- **Decision:** **GO FOR MILESTONE 2 RELEASE**.
 
 ---
 
 ## Project Documentation
 - [Threat Model](docs/threat_model.md)
+- [Grafana Dashboard](docs/grafana_dashboard.json)
 - [2-Minute Demo Script](docs/demo.md)
 - [Recovery & Run Lifecycle](docs/recovery.md)
 - [ADR-002: Hybrid Retrieval](docs/ADR-002-hybrid-retrieval.md)
@@ -236,3 +287,4 @@ uv run mypy src
 - [ADR-004: Typed Workflow and E4 Results](docs/ADR-004-e4-workflow.md)
 - [Hardware and Model Notes](docs/hardware.md)
 - [W6 D1-D6 devlog](devlog/W6_D1-D6.md)
+- [W7 D1-D6 devlog](devlog/W7_D1-D6.md)

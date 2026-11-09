@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -15,6 +16,9 @@ from uuid import uuid4
 
 import aiosqlite
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from aegisflow.metrics import record_tool_call
+from aegisflow.tracing import trace_tool_execution
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CORPUS_ROOT = PROJECT_ROOT / "data" / "corpus"
@@ -419,6 +423,7 @@ class ToolExecutor:
         run_id: str | None = None,
         approval_granted: bool = False,
     ) -> ToolResult:
+        started = time.perf_counter()
         try:
             serialized = json.dumps(
                 arguments, sort_keys=True, separators=(",", ":"), default=str
@@ -427,194 +432,231 @@ class ToolExecutor:
             serialized = type(arguments).__name__
         args_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
-        # ---- Global call-budget check -----------------------------------------
-        if (
-            self.policy.max_total_calls > 0
-            and self._total_calls >= self.policy.max_total_calls
-        ):
-            audit_id = await self.audit.record(
-                run_id=run_id,
-                tool=redact_sensitive(name[:100]),
-                args_hash=args_hash,
-                risk="unknown",
-                decision="deny",
-                outcome="budget_exceeded",
-            )
-            logger.warning(
-                "tool denied: global call budget exhausted",
-                extra={"tool": name, "audit_id": audit_id},
-            )
-            return ToolResult(
-                tool=name,
-                ok=False,
-                error="Global execution budget exceeded.",
-                audit_id=audit_id,
-            )
-
         spec = TOOL_REGISTRY.get(name)
-        if spec is None:
-            audit_id = await self.audit.record(
-                run_id=run_id,
-                tool=redact_sensitive(name[:100]),
-                args_hash=args_hash,
-                risk="unknown",
-                decision="deny",
-                outcome="unregistered_tool",
-            )
-            logger.info(
-                "tool denied",
-                extra={
-                    "tool": redact_sensitive(name[:100]),
-                    "args_hash": args_hash,
-                    "decision": "deny",
-                    "audit_id": audit_id,
-                },
-            )
-            return ToolResult(
-                tool=name, ok=False, error="Tool is not registered.", audit_id=audit_id
+        risk = spec.risk.value if spec else "unknown"
+
+        with trace_tool_execution(
+            tool_name=name, risk=risk, args_hash=args_hash, run_id=run_id or ""
+        ) as span:
+            # ---- Global call-budget check -----------------------------------------
+            if (
+                self.policy.max_total_calls > 0
+                and self._total_calls >= self.policy.max_total_calls
+            ):
+                duration = time.perf_counter() - started
+                record_tool_call(name, "deny", "budget_exceeded", duration)
+                audit_id = await self.audit.record(
+                    run_id=run_id,
+                    tool=redact_sensitive(name[:100]),
+                    args_hash=args_hash,
+                    risk="unknown",
+                    decision="deny",
+                    outcome="budget_exceeded",
+                )
+                span.set_attribute("tool.decision", "deny")
+                span.set_attribute("tool.outcome", "budget_exceeded")
+                logger.warning(
+                    "tool denied: global call budget exhausted",
+                    extra={"tool": name, "audit_id": audit_id},
+                )
+                return ToolResult(
+                    tool=name,
+                    ok=False,
+                    error="Global execution budget exceeded.",
+                    audit_id=audit_id,
+                )
+
+            if spec is None:
+                duration = time.perf_counter() - started
+                record_tool_call(name, "deny", "unregistered_tool", duration)
+                audit_id = await self.audit.record(
+                    run_id=run_id,
+                    tool=redact_sensitive(name[:100]),
+                    args_hash=args_hash,
+                    risk="unknown",
+                    decision="deny",
+                    outcome="unregistered_tool",
+                )
+                span.set_attribute("tool.decision", "deny")
+                span.set_attribute("tool.outcome", "unregistered_tool")
+                logger.info(
+                    "tool denied",
+                    extra={
+                        "tool": redact_sensitive(name[:100]),
+                        "args_hash": args_hash,
+                        "decision": "deny",
+                        "audit_id": audit_id,
+                    },
+                )
+                return ToolResult(
+                    tool=name,
+                    ok=False,
+                    error="Tool is not registered.",
+                    audit_id=audit_id,
+                )
+
+            # ---- Declarative YAML policy checks ----------------------------------
+            tool_policy = self.policy.tool_policy(name)
+
+            if not tool_policy.enabled:
+                duration = time.perf_counter() - started
+                record_tool_call(name, "deny", "policy_disabled", duration)
+                audit_id = await self.audit.record(
+                    run_id=run_id,
+                    tool=name,
+                    args_hash=args_hash,
+                    risk=spec.risk.value,
+                    decision="deny",
+                    outcome="policy_disabled",
+                )
+                span.set_attribute("tool.decision", "deny")
+                span.set_attribute("tool.outcome", "policy_disabled")
+                logger.info(
+                    "tool denied by policy (disabled)",
+                    extra={"tool": name, "audit_id": audit_id},
+                )
+                return ToolResult(
+                    tool=name,
+                    ok=False,
+                    error="Tool is disabled by policy.",
+                    audit_id=audit_id,
+                )
+
+            per_tool_count = self._tool_calls.get(name, 0)
+            if tool_policy.max_runs > 0 and per_tool_count >= tool_policy.max_runs:
+                duration = time.perf_counter() - started
+                record_tool_call(name, "deny", "per_tool_budget_exceeded", duration)
+                audit_id = await self.audit.record(
+                    run_id=run_id,
+                    tool=name,
+                    args_hash=args_hash,
+                    risk=spec.risk.value,
+                    decision="deny",
+                    outcome="per_tool_budget_exceeded",
+                )
+                span.set_attribute("tool.decision", "deny")
+                span.set_attribute("tool.outcome", "per_tool_budget_exceeded")
+                logger.warning(
+                    "tool denied: per-tool call budget exhausted",
+                    extra={"tool": name, "audit_id": audit_id},
+                )
+                return ToolResult(
+                    tool=name,
+                    ok=False,
+                    error="Per-tool execution budget exceeded.",
+                    audit_id=audit_id,
+                )
+
+            # Approval: YAML override wins when explicitly set.
+            needs_approval = (
+                tool_policy.require_approval_override
+                if tool_policy.require_approval_override is not None
+                else spec.requires_approval
             )
 
-        # ---- Declarative YAML policy checks ----------------------------------
-        tool_policy = self.policy.tool_policy(name)
+            try:
+                parsed = spec.input_model.model_validate(arguments)
+            except Exception:
+                duration = time.perf_counter() - started
+                record_tool_call(name, "deny", "invalid_arguments", duration)
+                audit_id = await self.audit.record(
+                    run_id=run_id,
+                    tool=name,
+                    args_hash=args_hash,
+                    risk=spec.risk.value,
+                    decision="deny",
+                    outcome="invalid_arguments",
+                )
+                span.set_attribute("tool.decision", "deny")
+                span.set_attribute("tool.outcome", "invalid_arguments")
+                logger.info(
+                    "tool denied",
+                    extra={
+                        "tool": name,
+                        "args_hash": args_hash,
+                        "decision": "deny",
+                        "audit_id": audit_id,
+                    },
+                )
+                return ToolResult(
+                    tool=name,
+                    ok=False,
+                    error="Tool arguments are invalid.",
+                    audit_id=audit_id,
+                )
+            if needs_approval and not approval_granted:
+                duration = time.perf_counter() - started
+                record_tool_call(name, "deny", "approval_required", duration)
+                audit_id = await self.audit.record(
+                    run_id=run_id,
+                    tool=name,
+                    args_hash=args_hash,
+                    risk=spec.risk.value,
+                    decision="deny",
+                    outcome="approval_required",
+                )
+                span.set_attribute("tool.decision", "deny")
+                span.set_attribute("tool.outcome", "approval_required")
+                logger.info(
+                    "tool requires approval",
+                    extra={
+                        "tool": name,
+                        "args_hash": args_hash,
+                        "decision": "deny",
+                        "audit_id": audit_id,
+                    },
+                )
+                return ToolResult(
+                    tool=name,
+                    ok=False,
+                    error="Human approval is required.",
+                    audit_id=audit_id,
+                )
+            decision = "allow"
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(spec.handler, **parsed.model_dump()),
+                    timeout=spec.timeout_seconds,
+                )
+                outcome = "ok"
+            except TimeoutError:
+                result = None
+                outcome = "timeout"
+            except Exception:
+                result = None
+                outcome = "error"
 
-        if not tool_policy.enabled:
+            duration = time.perf_counter() - started
+            record_tool_call(name, decision, outcome, duration)
+            span.set_attribute("tool.decision", decision)
+            span.set_attribute("tool.outcome", outcome)
+
+            self._total_calls += 1
+            self._tool_calls[name] = per_tool_count + 1
+
             audit_id = await self.audit.record(
                 run_id=run_id,
                 tool=name,
                 args_hash=args_hash,
                 risk=spec.risk.value,
-                decision="deny",
-                outcome="policy_disabled",
+                decision=decision,
+                outcome=outcome,
             )
             logger.info(
-                "tool denied by policy (disabled)",
-                extra={"tool": name, "audit_id": audit_id},
-            )
-            return ToolResult(
-                tool=name,
-                ok=False,
-                error="Tool is disabled by policy.",
-                audit_id=audit_id,
-            )
-
-        per_tool_count = self._tool_calls.get(name, 0)
-        if tool_policy.max_runs > 0 and per_tool_count >= tool_policy.max_runs:
-            audit_id = await self.audit.record(
-                run_id=run_id,
-                tool=name,
-                args_hash=args_hash,
-                risk=spec.risk.value,
-                decision="deny",
-                outcome="per_tool_budget_exceeded",
-            )
-            logger.warning(
-                "tool denied: per-tool call budget exhausted",
-                extra={"tool": name, "audit_id": audit_id},
-            )
-            return ToolResult(
-                tool=name,
-                ok=False,
-                error="Per-tool execution budget exceeded.",
-                audit_id=audit_id,
-            )
-
-        # Approval: YAML override wins when explicitly set.
-        needs_approval = (
-            tool_policy.require_approval_override
-            if tool_policy.require_approval_override is not None
-            else spec.requires_approval
-        )
-
-        try:
-            parsed = spec.input_model.model_validate(arguments)
-        except Exception:
-            audit_id = await self.audit.record(
-                run_id=run_id,
-                tool=name,
-                args_hash=args_hash,
-                risk=spec.risk.value,
-                decision="deny",
-                outcome="invalid_arguments",
-            )
-            logger.info(
-                "tool denied",
+                "tool completed",
                 extra={
                     "tool": name,
                     "args_hash": args_hash,
-                    "decision": "deny",
+                    "decision": decision,
+                    "outcome": outcome,
                     "audit_id": audit_id,
                 },
             )
-            return ToolResult(
-                tool=name,
-                ok=False,
-                error="Tool arguments are invalid.",
-                audit_id=audit_id,
-            )
-        if needs_approval and not approval_granted:
-            audit_id = await self.audit.record(
-                run_id=run_id,
-                tool=name,
-                args_hash=args_hash,
-                risk=spec.risk.value,
-                decision="deny",
-                outcome="approval_required",
-            )
-            logger.info(
-                "tool requires approval",
-                extra={
-                    "tool": name,
-                    "args_hash": args_hash,
-                    "decision": "deny",
-                    "audit_id": audit_id,
-                },
-            )
-            return ToolResult(
-                tool=name,
-                ok=False,
-                error="Human approval is required.",
-                audit_id=audit_id,
-            )
-        decision = "allow"
-        try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(spec.handler, **parsed.model_dump()),
-                timeout=spec.timeout_seconds,
-            )
-            outcome = "ok"
-        except TimeoutError:
-            result = None
-            outcome = "timeout"
-        except Exception:
-            result = None
-            outcome = "error"
-
-        self._total_calls += 1
-        self._tool_calls[name] = per_tool_count + 1
-
-        audit_id = await self.audit.record(
-            run_id=run_id,
-            tool=name,
-            args_hash=args_hash,
-            risk=spec.risk.value,
-            decision=decision,
-            outcome=outcome,
-        )
-        logger.info(
-            "tool completed",
-            extra={
-                "tool": name,
-                "args_hash": args_hash,
-                "decision": decision,
-                "outcome": outcome,
-                "audit_id": audit_id,
-            },
-        )
-        if outcome != "ok":
-            return ToolResult(
-                tool=name, ok=False, error=f"Tool {outcome}.", audit_id=audit_id
-            )
-        return ToolResult(tool=name, ok=True, result=result, audit_id=audit_id)
+            if outcome != "ok":
+                return ToolResult(
+                    tool=name, ok=False, error=f"Tool {outcome}.", audit_id=audit_id
+                )
+            return ToolResult(tool=name, ok=True, result=result, audit_id=audit_id)
 
 
 def audit_hash(arguments: object) -> str:

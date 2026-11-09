@@ -6,8 +6,10 @@ from typing import Any
 from uuid import uuid4
 
 from aegisflow.config import CHAT_MODEL
+from aegisflow.metrics import ACTIVE_RUNS, QUEUE_DEPTH, record_error
 from aegisflow.rag.retrieval import DEFAULT_STORE_PATH
 from aegisflow.run_store import RunStore
+from aegisflow.tracing import trace_workflow_run
 from aegisflow.workflow.nodes import WorkflowServices
 from aegisflow.workflow.runner import run_workflow_async
 from aegisflow.workflow.state import RunState
@@ -33,6 +35,7 @@ class RunManager:
     def start(self, run_id: str, question: str, top_k: int) -> None:
         if run_id in self.tasks and not self.tasks[run_id].done():
             return
+        QUEUE_DEPTH.inc()
         flag = self.cancel_flags.setdefault(run_id, asyncio.Event())
         services = WorkflowServices(
             is_cancelled=lambda candidate: candidate == run_id and flag.is_set()
@@ -90,49 +93,57 @@ class RunManager:
             "planner_model": CHAT_MODEL,
             "store_path": str(DEFAULT_STORE_PATH),
         }
+        QUEUE_DEPTH.dec()
+        ACTIVE_RUNS.inc()
         try:
-            await self.store.status(run_id, "running")
-            checkpoint = await self.saver.aget_tuple(
-                {"configurable": {"thread_id": run_id}}
-            )
-
-            async def publish(current: RunState) -> None:
-                for event in current.get("telemetry", []):
-                    event_id = event.get("event_id")
-                    if event_id and event_id not in published:
-                        published.add(event_id)
-                        await self.store.event(run_id, "node", dict(event))
-                await self.store.event(
-                    run_id,
-                    "checkpoint",
-                    {
-                        "steps": current.get("steps", 0),
-                        "next_node": current.get("next_node"),
-                    },
+            with trace_workflow_run(run_id, question, top_k) as root_span:
+                await self.store.status(run_id, "running")
+                checkpoint = await self.saver.aget_tuple(
+                    {"configurable": {"thread_id": run_id}}
                 )
 
-            published: set[str] = set()
-            result = await run_workflow_async(
-                state,
-                checkpointer=self.saver,
-                services=services,
-                on_update=publish,
-                resume=checkpoint is not None,
-            )
-            if result.get("cancelled") or await self.store.cancelled(run_id):
-                await self.store.status(run_id, "cancelled", result=dict(result))
-            elif result.get("abstained"):
-                await self.store.status(
-                    run_id, "abstained", result=result.get("report")
+                async def publish(current: RunState) -> None:
+                    for event in current.get("telemetry", []):
+                        event_id = event.get("event_id")
+                        if event_id and event_id not in published:
+                            published.add(event_id)
+                            await self.store.event(run_id, "node", dict(event))
+                    await self.store.event(
+                        run_id,
+                        "checkpoint",
+                        {
+                            "steps": current.get("steps", 0),
+                            "next_node": current.get("next_node"),
+                        },
+                    )
+
+                published: set[str] = set()
+                result = await run_workflow_async(
+                    state,
+                    checkpointer=self.saver,
+                    services=services,
+                    on_update=publish,
+                    resume=checkpoint is not None,
                 )
-            else:
-                await self.store.status(
-                    run_id, "completed", result=result.get("report")
-                )
+                if result.get("cancelled") or await self.store.cancelled(run_id):
+                    root_span.set_attribute("workflow.status", "cancelled")
+                    await self.store.status(run_id, "cancelled", result=dict(result))
+                elif result.get("abstained"):
+                    root_span.set_attribute("workflow.status", "abstained")
+                    await self.store.status(
+                        run_id, "abstained", result=result.get("report")
+                    )
+                else:
+                    root_span.set_attribute("workflow.status", "completed")
+                    await self.store.status(
+                        run_id, "completed", result=result.get("report")
+                    )
         except Exception as exc:
+            record_error("workflow_run", type(exc).__name__)
             logger.exception("managed workflow failed", extra={"run_id": run_id})
             await self.store.status(run_id, "failed", error=type(exc).__name__)
         finally:
+            ACTIVE_RUNS.dec()
             self.tasks.pop(run_id, None)
 
     async def wait(self, run_id: str, timeout: float = 10.0) -> None:

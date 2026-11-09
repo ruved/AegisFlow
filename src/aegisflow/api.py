@@ -12,12 +12,13 @@ from time import perf_counter
 from typing import Annotated, Any, cast
 
 import chromadb
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from aegisflow.config import CHAT_MODEL, MAX_QUESTION_LENGTH, MAX_TOP_K
+from aegisflow.metrics import CONTENT_TYPE_LATEST, get_latest_metrics
 from aegisflow.rag.errors import (
     OllamaConfigurationError,
     OllamaResponseError,
@@ -37,6 +38,7 @@ from aegisflow.security_tools import (
     ToolProposal,
     tool_catalog,
 )
+from aegisflow.tracing import build_trace_tree
 from aegisflow.workflow.models import call_structured
 from aegisflow.workflow.runner import sqlite_saver_context
 
@@ -84,7 +86,7 @@ app.state.api_key = os.environ.get("AEGISFLOW_API_KEY")
 @app.middleware("http")
 async def authenticate_api_key(request: Request, call_next: Any) -> Any:
     """Require a configured key for protected routes; remain local-only by default."""
-    if request.url.path in {"/health", "/ready"}:
+    if request.url.path in {"/health", "/ready", "/metrics"}:
         return await call_next(request)
     configured_key = request.app.state.api_key
     if configured_key:
@@ -159,6 +161,26 @@ async def create_run(
         idempotency_key, run.question, run.top_k
     )
     return _run_response(row)
+
+
+@app.get("/metrics")
+def metrics_endpoint() -> Response:
+    """Expose Prometheus metrics for monitoring and alerting."""
+    return Response(content=get_latest_metrics(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/v1/runs/{run_id}/trace")
+async def get_run_trace(run_id: str, request: Request) -> dict[str, Any]:
+    """Return the hierarchical OpenTelemetry trace tree for a workflow run."""
+    row = await request.app.state.run_store.get(run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    tree = build_trace_tree(run_id)
+    return {
+        "run_id": run_id,
+        "has_trace": tree is not None,
+        "trace": tree,
+    }
 
 
 @app.get("/v1/runs/{run_id}", response_model=RunResponse)

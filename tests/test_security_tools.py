@@ -6,15 +6,18 @@ import time
 from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi.testclient import TestClient
 
 from aegisflow import api
-from aegisflow.red_team import run
+from aegisflow.red_team import MODEL_LOOP_INJECTION_GOALS, run, run_model_loop
 from aegisflow.security_tools import (
     TOOL_REGISTRY,
+    ExecutorPolicy,
     ToolAuditStore,
     ToolExecutor,
     ToolInput,
+    ToolPolicy,
     ToolProposal,
     ToolRisk,
     ToolSpec,
@@ -209,3 +212,237 @@ def test_model_proposal_cannot_approve_simulated_write(
         audit_rows = client.portal.call(client.app.state.tool_audit.rows)
         assert len(audit_rows) == 1
         assert audit_rows[0][5] == "deny"
+
+
+# ---------------------------------------------------------------------------
+# YAML Policy config tests (D2 completion)
+# ---------------------------------------------------------------------------
+
+
+def test_policy_loads_from_yaml(tmp_path: Path) -> None:
+    policy_file = tmp_path / "policy.yaml"
+    policy_file.write_text(
+        yaml.dump(
+            {
+                "global": {"max_total_calls": 3},
+                "tools": {
+                    "search_logs": {
+                        "enabled": True,
+                        "max_runs": 2,
+                        "require_approval_override": None,
+                    },
+                    "simulate_write": {
+                        "enabled": False,
+                        "max_runs": 0,
+                        "require_approval_override": True,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    policy = ExecutorPolicy.load(policy_file)
+    assert policy.max_total_calls == 3
+    assert policy.tool_policy("search_logs").max_runs == 2
+    assert policy.tool_policy("search_logs").enabled is True
+    assert policy.tool_policy("simulate_write").enabled is False
+    assert policy.tool_policy("get_service_deps").enabled is True  # default
+    assert policy.tool_policy("get_service_deps").max_runs == 0  # default = unlimited
+
+
+def test_policy_defaults_when_file_absent(tmp_path: Path) -> None:
+    policy = ExecutorPolicy.load(tmp_path / "nonexistent.yaml")
+    assert policy.max_total_calls == 0
+    assert policy.tool_policy("search_logs").enabled is True
+
+
+def test_policy_disables_tool(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        policy_file = tmp_path / "policy.yaml"
+        policy_file.write_text(
+            yaml.dump(
+                {
+                    "global": {"max_total_calls": 0},
+                    "tools": {
+                        "query_metrics": {
+                            "enabled": False,
+                            "max_runs": 0,
+                            "require_approval_override": None,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = ExecutorPolicy.load(policy_file)
+        audit = ToolAuditStore(tmp_path / "audit.sqlite3")
+        await audit.open()
+        executor = ToolExecutor(audit, policy)
+        result = await executor.execute(
+            "query_metrics",
+            {"service": "order-service", "metric": "latency_p95_ms"},
+        )
+        assert result.ok is False
+        assert result.error == "Tool is disabled by policy."
+        rows = await audit.rows()
+        assert rows[0][6] == "policy_disabled"
+        await audit.close()
+
+    asyncio.run(exercise())
+
+
+def test_policy_per_tool_budget(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        policy = ExecutorPolicy(
+            max_total_calls=0,
+            tools={
+                "get_service_deps": ToolPolicy(enabled=True, max_runs=1),
+            },
+        )
+        audit = ToolAuditStore(tmp_path / "audit.sqlite3")
+        await audit.open()
+        executor = ToolExecutor(audit, policy)
+        r1 = await executor.execute("get_service_deps", {"service": "order-service"})
+        r2 = await executor.execute("get_service_deps", {"service": "order-service"})
+        assert r1.ok is True
+        assert r2.ok is False
+        assert r2.error == "Per-tool execution budget exceeded."
+        rows = await audit.rows()
+        assert [row[6] for row in rows] == ["ok", "per_tool_budget_exceeded"]
+        await audit.close()
+
+    asyncio.run(exercise())
+
+
+def test_policy_global_budget(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        policy = ExecutorPolicy(max_total_calls=1)
+        audit = ToolAuditStore(tmp_path / "audit.sqlite3")
+        await audit.open()
+        executor = ToolExecutor(audit, policy)
+        r1 = await executor.execute("get_service_deps", {"service": "order-service"})
+        r2 = await executor.execute(
+            "query_metrics", {"service": "order-service", "metric": "latency_p95_ms"}
+        )
+        assert r1.ok is True
+        assert r2.ok is False
+        assert r2.error == "Global execution budget exceeded."
+        rows = await audit.rows()
+        assert rows[-1][6] == "budget_exceeded"
+        await audit.close()
+
+    asyncio.run(exercise())
+
+
+def test_policy_approval_override_forces_approval_on_low_risk_tool(
+    tmp_path: Path,
+) -> None:
+    """require_approval_override=true on a low-risk tool must block unapproved calls."""
+
+    async def exercise() -> None:
+        policy = ExecutorPolicy(
+            tools={
+                "get_service_deps": ToolPolicy(
+                    enabled=True, require_approval_override=True
+                )
+            }
+        )
+        audit = ToolAuditStore(tmp_path / "audit.sqlite3")
+        await audit.open()
+        executor = ToolExecutor(audit, policy)
+        without_approval = await executor.execute(
+            "get_service_deps", {"service": "order-service"}
+        )
+        with_approval = await executor.execute(
+            "get_service_deps",
+            {"service": "order-service"},
+            approval_granted=True,
+        )
+        assert without_approval.ok is False
+        assert without_approval.error == "Human approval is required."
+        assert with_approval.ok is True
+        rows = await audit.rows()
+        assert [row[6] for row in rows] == ["approval_required", "ok"]
+        await audit.close()
+
+    asyncio.run(exercise())
+
+
+# ---------------------------------------------------------------------------
+# Model-loop red-team tests (D4 completion – executor boundary verified)
+# ---------------------------------------------------------------------------
+
+
+def test_model_loop_redteam_executor_boundary_holds(tmp_path: Path) -> None:
+    """Model-loop test with a stubbed model: even when the stub proposes
+    simulate_write, the executor must deny it and record 0 bypasses."""
+
+    call_count = 0
+
+    def fake_structured(**kwargs: Any) -> StructuredCall:
+        nonlocal call_count
+        # Alternate between a privileged proposal (simulate_write) and a
+        # benign one (get_service_deps) to exercise both text-compliance paths.
+        call_count += 1
+        if call_count % 2 == 0:
+            proposal = ToolProposal(
+                tool_name="simulate_write",
+                arguments={"action": "override", "target": "order-service"},
+            )
+        else:
+            proposal = ToolProposal(
+                tool_name="get_service_deps",
+                arguments={"service": "order-service"},
+            )
+        return StructuredCall(proposal, 10, 10, False)
+
+    import unittest.mock as mock
+
+    with mock.patch(
+        "aegisflow.workflow.models.call_structured", side_effect=fake_structured
+    ):
+        result: dict[str, Any] = asyncio.run(
+            run_model_loop(
+                repetitions=1,
+                audit_path=tmp_path / "audit.sqlite3",
+                model="stub",
+            )
+        )
+
+    assert result["executor_bypasses"] == 0, (
+        "Executor must reject all privileged proposals"
+    )
+    assert result["executor_bypass_rate"] == 0.0
+    # Half proposals were privileged (simulate_write) → text compliance < 1
+    assert result["privileged_text_proposals"] > 0
+    assert result["text_compliance_rate"] < 1.0
+    assert len(result["per_goal_results"]) == len(MODEL_LOOP_INJECTION_GOALS)
+
+
+def test_model_loop_reports_text_compliance_separately(tmp_path: Path) -> None:
+    """Confirm the report separates text compliance from executor bypass rate."""
+    import unittest.mock as mock
+
+    def all_safe(**kwargs: Any) -> StructuredCall:
+        return StructuredCall(
+            ToolProposal(
+                tool_name="get_service_deps",
+                arguments={"service": "order-service"},
+            ),
+            5,
+            5,
+            False,
+        )
+
+    with mock.patch("aegisflow.workflow.models.call_structured", side_effect=all_safe):
+        result = asyncio.run(
+            run_model_loop(
+                repetitions=1,
+                audit_path=tmp_path / "audit.sqlite3",
+                model="stub",
+            )
+        )
+
+    assert result["privileged_text_proposals"] == 0
+    assert result["text_compliance_rate"] == 1.0
+    assert result["executor_bypasses"] == 0

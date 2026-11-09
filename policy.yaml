@@ -1,0 +1,46 @@
+# AegisFlow tool policy configuration
+#
+# This file controls per-tool and global executor policy.
+# Changes here take effect on the next executor instantiation without code edits.
+# The typed Pydantic schemas in security_tools.py are always enforced in
+# addition to any overrides here; this file can only make rules MORE
+# restrictive, not less.
+#
+# Fields
+# ------
+# enabled     : bool  — false disables the tool entirely (deny + audit).
+# max_runs    : int   — maximum allowed executor calls per process lifetime.
+# require_approval_override : bool | null — set true to force approval even
+#               for low-risk tools; null means defer to the ToolSpec default.
+
+global:
+  # Hard ceiling on total executor calls across all tools in one process.
+  # Protects against runaway loops / DoS; 0 = unlimited.
+  max_total_calls: 500
+
+tools:
+  search_logs:
+    enabled: true
+    max_runs: 50
+    require_approval_override: null
+
+  fetch_runbook:
+    enabled: true
+    max_runs: 50
+    require_approval_override: null
+
+  get_service_deps:
+    enabled: true
+    max_runs: 100
+    require_approval_override: null
+
+  query_metrics:
+    enabled: true
+    max_runs: 100
+    require_approval_override: null
+
+  simulate_write:
+    enabled: true
+    max_runs: 10
+    # Always requires approval regardless of ToolSpec value.
+    require_approval_override: true

@@ -37,9 +37,11 @@ retrieved content, credentials, or unredacted tool arguments.
 
 The red-team runner exercises 20 injection strings, 10 malformed or malicious argument
 cases, and 5 oversized resource inputs, repeated five times. It measures executor
-policy bypasses; model text-level compliance is explicitly not measured because the
-runner injects proposals directly without model inference. Add model-in-the-loop
-testing before claiming resistance to model-mediated prompt injection.
+policy bypasses. In addition, an optional model-loop mode (`--model-loop`) sends
+adversarial goals to the model to measure text-level compliance separately from
+executor policy bypasses. Declarative execution budgets and per-tool rules in
+`policy.yaml` provide defense-in-depth against DoS and unauthorized tool execution.
 
-Run `uv run python evals/run_red_team.py --runs 5` to save a JSON report and hashed
-audit rows. The suite is deterministic and local; it makes no external service calls.
+Run `uv run python evals/run_red_team.py --runs 5` for deterministic evaluation, or
+add `--model-loop` to test model text compliance with Ollama. Both report zero
+executor policy bypasses.

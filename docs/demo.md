@@ -18,6 +18,8 @@ Pass `--fast` for instant execution without paced delays:
 uv run python scripts/demo.py --fast
 ```
 
+The captured terminal output from a verified run is saved at [`results/demo_transcript.txt`](../results/demo_transcript.txt).
+
 ---
 
 ## 2-Minute Walkthrough & Video Script

@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -18,7 +18,68 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CORPUS_ROOT = PROJECT_ROOT / "data" / "corpus"
+DEFAULT_POLICY_PATH = PROJECT_ROOT / "policy.yaml"
 logger = logging.getLogger("aegisflow.tools")
+
+
+# ---------------------------------------------------------------------------
+# Declarative policy loader
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ToolPolicy:
+    """Per-tool declarative policy loaded from policy.yaml."""
+
+    enabled: bool = True
+    max_runs: int = 0  # 0 = unlimited
+    require_approval_override: bool | None = None
+
+
+@dataclass
+class ExecutorPolicy:
+    """Global + per-tool policy parsed from a YAML config file."""
+
+    max_total_calls: int = 0  # 0 = unlimited
+    tools: dict[str, ToolPolicy] = field(default_factory=dict)
+
+    @staticmethod
+    def load(path: Path | None = None) -> "ExecutorPolicy":
+        """Load policy from *path* (defaults to policy.yaml at project root).
+
+        Returns a permissive default policy if the file is absent or unparseable,
+        so the system degrades safely without crashing.
+        """
+        resolved = path or DEFAULT_POLICY_PATH
+        if not resolved.exists():
+            return ExecutorPolicy()
+        try:
+            import yaml  # type: ignore[import-untyped]
+
+            raw: dict[str, Any] = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+        except Exception:  # pragma: no cover – bad yaml is non-fatal
+            logger.warning("Could not parse policy file %s; using defaults.", resolved)
+            return ExecutorPolicy()
+
+        global_cfg: dict[str, Any] = raw.get("global", {}) or {}
+        tools_cfg: dict[str, Any] = raw.get("tools", {}) or {}
+        tools: dict[str, ToolPolicy] = {}
+        for name, cfg in tools_cfg.items():
+            if not isinstance(cfg, dict):
+                continue
+            tools[name] = ToolPolicy(
+                enabled=bool(cfg.get("enabled", True)),
+                max_runs=int(cfg.get("max_runs", 0)),
+                require_approval_override=cfg.get("require_approval_override"),
+            )
+        return ExecutorPolicy(
+            max_total_calls=int(global_cfg.get("max_total_calls", 0)),
+            tools=tools,
+        )
+
+    def tool_policy(self, name: str) -> ToolPolicy:
+        return self.tools.get(name, ToolPolicy())
+
 
 _INJECTION_PATTERNS = {
     "instruction_override": re.compile(
@@ -340,8 +401,15 @@ class ToolResult(BaseModel):
 
 
 class ToolExecutor:
-    def __init__(self, audit: ToolAuditStore) -> None:
+    def __init__(
+        self,
+        audit: ToolAuditStore,
+        policy: ExecutorPolicy | None = None,
+    ) -> None:
         self.audit = audit
+        self.policy: ExecutorPolicy = policy or ExecutorPolicy.load()
+        self._total_calls: int = 0
+        self._tool_calls: dict[str, int] = {}
 
     async def execute(
         self,
@@ -358,6 +426,31 @@ class ToolExecutor:
         except (TypeError, ValueError):
             serialized = type(arguments).__name__
         args_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+        # ---- Global call-budget check -----------------------------------------
+        if (
+            self.policy.max_total_calls > 0
+            and self._total_calls >= self.policy.max_total_calls
+        ):
+            audit_id = await self.audit.record(
+                run_id=run_id,
+                tool=redact_sensitive(name[:100]),
+                args_hash=args_hash,
+                risk="unknown",
+                decision="deny",
+                outcome="budget_exceeded",
+            )
+            logger.warning(
+                "tool denied: global call budget exhausted",
+                extra={"tool": name, "audit_id": audit_id},
+            )
+            return ToolResult(
+                tool=name,
+                ok=False,
+                error="Global execution budget exceeded.",
+                audit_id=audit_id,
+            )
+
         spec = TOOL_REGISTRY.get(name)
         if spec is None:
             audit_id = await self.audit.record(
@@ -380,6 +473,58 @@ class ToolExecutor:
             return ToolResult(
                 tool=name, ok=False, error="Tool is not registered.", audit_id=audit_id
             )
+
+        # ---- Declarative YAML policy checks ----------------------------------
+        tool_policy = self.policy.tool_policy(name)
+
+        if not tool_policy.enabled:
+            audit_id = await self.audit.record(
+                run_id=run_id,
+                tool=name,
+                args_hash=args_hash,
+                risk=spec.risk.value,
+                decision="deny",
+                outcome="policy_disabled",
+            )
+            logger.info(
+                "tool denied by policy (disabled)",
+                extra={"tool": name, "audit_id": audit_id},
+            )
+            return ToolResult(
+                tool=name,
+                ok=False,
+                error="Tool is disabled by policy.",
+                audit_id=audit_id,
+            )
+
+        per_tool_count = self._tool_calls.get(name, 0)
+        if tool_policy.max_runs > 0 and per_tool_count >= tool_policy.max_runs:
+            audit_id = await self.audit.record(
+                run_id=run_id,
+                tool=name,
+                args_hash=args_hash,
+                risk=spec.risk.value,
+                decision="deny",
+                outcome="per_tool_budget_exceeded",
+            )
+            logger.warning(
+                "tool denied: per-tool call budget exhausted",
+                extra={"tool": name, "audit_id": audit_id},
+            )
+            return ToolResult(
+                tool=name,
+                ok=False,
+                error="Per-tool execution budget exceeded.",
+                audit_id=audit_id,
+            )
+
+        # Approval: YAML override wins when explicitly set.
+        needs_approval = (
+            tool_policy.require_approval_override
+            if tool_policy.require_approval_override is not None
+            else spec.requires_approval
+        )
+
         try:
             parsed = spec.input_model.model_validate(arguments)
         except Exception:
@@ -406,7 +551,7 @@ class ToolExecutor:
                 error="Tool arguments are invalid.",
                 audit_id=audit_id,
             )
-        if spec.requires_approval and not approval_granted:
+        if needs_approval and not approval_granted:
             audit_id = await self.audit.record(
                 run_id=run_id,
                 tool=name,
@@ -443,6 +588,10 @@ class ToolExecutor:
         except Exception:
             result = None
             outcome = "error"
+
+        self._total_calls += 1
+        self._tool_calls[name] = per_tool_count + 1
+
         audit_id = await self.audit.record(
             run_id=run_id,
             tool=name,

@@ -152,11 +152,21 @@ curl.exe http://127.0.0.1:8000/v1/runs/<run-id>
 | `query_metrics` | `low` | 1.0s | `False` | Return simulated service metrics (`latency_p95_ms`, `error_rate_pct`, `db_connections`). |
 | `simulate_write` | `high` | 1.0s | `True` | Preview a configuration change; denied unless host grants approval. |
 
+### Declarative Policy Configuration (`policy.yaml`)
+Operator-level allow/deny rules, execution budgets, and approval overrides can be configured declaratively in `policy.yaml` without changing application code:
+- **Global call ceiling:** `max_total_calls` hard budget per executor instance to prevent runaway loops or DoS attacks.
+- **Per-tool controls:** `enabled: false` completely disables specific tools; `max_runs` sets per-tool invocation limits.
+- **Approval overrides:** `require_approval_override: true` elevates low-risk tools to require explicit human approval.
+
 ### Automated Red Team Suite
 Run the automated adversarial red-team suite:
 
 ```bash
+# 1. Deterministic executor-level evaluation (default, CI safe):
 uv run python evals/run_red_team.py --runs 5
+
+# 2. Model-in-the-loop evaluation (requires Ollama):
+uv run python evals/run_red_team.py --model-loop --model gemma3:4b --runs 1
 ```
 
 Results are saved to [results/red_team_week6.json](results/red_team_week6.json):
@@ -165,6 +175,7 @@ Results are saved to [results/red_team_week6.json](results/red_team_week6.json):
 - **25 Resource exhaustion attempts** (5 oversized/nested inputs x 5 runs)
 - **Total proposals tested:** 175
 - **Observed policy bypasses:** **0 (0.0% bypass rate)**
+- **Report separation:** In model-loop mode, text-level compliance (whether the model yielded to injection) is reported separately from actual executor bypasses (which remain 0).
 
 Audit entries for all attempts are recorded in `runtime/tool_audit_redteam.sqlite3` with SHA-256 argument hashes only.
 
@@ -183,7 +194,7 @@ The full threat model is documented in [docs/threat_model.md](docs/threat_model.
 All quality and security checks pass cleanly:
 
 ```powershell
-# Run the complete test suite (126 tests)
+# Run the complete test suite (134 tests)
 uv run pytest -q
 
 # Code formatting and style
@@ -195,11 +206,12 @@ uv run mypy src
 ```
 
 ### Milestone 1 Status:
-- **126/126 automated unit and integration tests passing.**
+- **134/134 automated unit and integration tests passing.**
 - **0 policy bypasses** across 175 red-team adversarial attacks.
 - **0 secret or PII leaks** in JSON logs (tested against API keys, passwords, Bearer tokens, AWS keys, emails).
-- **Ruff linter and code formatter:** 100% compliant across 102 files.
+- **Ruff linter and code formatter:** 100% compliant across 104 files.
 - **Mypy static analysis:** Clean across 32 source modules.
+- **Demo session:** Verified and captured at [results/demo_transcript.txt](results/demo_transcript.txt).
 
 ---
 

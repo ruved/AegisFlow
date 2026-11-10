@@ -158,9 +158,7 @@ def run_experiment(
         prompt_eval_ns = stats.get("prompt_eval_duration", 0)
         prompt_eval_ms = prompt_eval_ns / 1_000_000.0
         total_eval_ns = stats.get("total_duration", 0)
-        total_ms = (
-            total_eval_ns / 1_000_000.0 if total_eval_ns else ttft + 50.0
-        )
+        total_ms = total_eval_ns / 1_000_000.0 if total_eval_ns else ttft + 50.0
         prompt_tokens = stats.get("prompt_eval_count", 0)
         eval_tokens = stats.get("eval_count", 0)
 
@@ -194,9 +192,7 @@ def run_experiment(
         prompt_eval_ns = stats.get("prompt_eval_duration", 0)
         prompt_eval_ms = prompt_eval_ns / 1_000_000.0
         total_eval_ns = stats.get("total_duration", 0)
-        total_ms = (
-            total_eval_ns / 1_000_000.0 if total_eval_ns else ttft + 50.0
-        )
+        total_ms = total_eval_ns / 1_000_000.0 if total_eval_ns else ttft + 50.0
         prompt_tokens = stats.get("prompt_eval_count", 0)
         eval_tokens = stats.get("eval_count", 0)
 

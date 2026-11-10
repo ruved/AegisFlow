@@ -1,0 +1,2 @@
+query_id,scenario,repetition,mode,duration_ms,ttft_ms,prompt_tokens,completion_tokens,total_tokens,cache_hit,status,error
+BM-001,orchestrated,2,warm,96723.33,33853.16,3506,638,4144,False,ok,

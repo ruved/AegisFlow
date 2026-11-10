@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import logging
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -150,9 +149,7 @@ def build_nodes(
         for subquestion in state.get("subquestions", [state["question"]])[:3]:
             if services.is_cancelled(state.get("run_id", "")):
                 return {"next_node": "cancelled", "cancelled": True}
-            chunks = services.retrieve(
-                subquestion, state.get("top_k", 3), store_path
-            )
+            chunks = services.retrieve(subquestion, state.get("top_k", 3), store_path)
             subq_pairs.append((subquestion, chunks))
 
         builder_result = build_evidence_context(subq_pairs)

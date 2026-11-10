@@ -153,9 +153,7 @@ class EmbeddingCache:
             record_cache_hit("embedding")
         return vec
 
-    def put(
-        self, text: str, vector: list[float], model: str = EMBEDDING_MODEL
-    ) -> None:
+    def put(self, text: str, vector: list[float], model: str = EMBEDDING_MODEL) -> None:
         if not ENABLE_EMBEDDING_CACHE:
             return
         key = self.make_key(text, model)
@@ -317,8 +315,7 @@ class RetrievalCache:
         key = self.make_key(query, corpus_version, k, rrf_constant, store_path)
         # Store clean copies without transient metadata
         clean_results = [
-            {k: v for k, v in item.items() if k != "cache_hit"}
-            for item in results
+            {k: v for k, v in item.items() if k != "cache_hit"} for item in results
         ]
         self._lru.put(key, clean_results)
 

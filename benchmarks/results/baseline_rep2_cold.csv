@@ -1,0 +1,11 @@
+query_id,scenario,repetition,mode,duration_ms,ttft_ms,prompt_tokens,completion_tokens,total_tokens,cache_hit,status,error
+BM-001,baseline,2,cold,2274.57,2274.57,426,0,426,False,ok,
+BM-002,baseline,2,cold,2222.62,2222.62,635,0,635,False,ok,
+BM-003,baseline,2,cold,2255.91,2255.9,214,0,214,False,ok,
+BM-004,baseline,2,cold,2322.69,2322.69,222,0,222,False,ok,
+BM-005,baseline,2,cold,2200.45,2200.45,235,0,235,False,ok,
+BM-006,baseline,2,cold,2450.29,2450.28,352,0,352,False,ok,
+BM-007,baseline,2,cold,2124.33,2124.33,271,0,271,False,ok,
+BM-008,baseline,2,cold,2196.35,2196.35,327,0,327,False,ok,
+BM-009,baseline,2,cold,2235.53,2235.53,206,0,206,False,ok,
+BM-010,baseline,2,cold,2468.17,2468.16,438,0,438,False,ok,

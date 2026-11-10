@@ -69,9 +69,7 @@ def call_structured[PydanticOutput: BaseModel](
     limiter = get_inference_limiter()
     with limiter.acquire_sync(timeout=OLLAMA_CHAT_TIMEOUT_SECONDS) as wait_info:
         with trace_llm_call(model=model, schema_name=schema.__name__) as span:
-            span.set_attribute(
-                "inference.queue_wait_ms", wait_info["queue_wait_ms"]
-            )
+            span.set_attribute("inference.queue_wait_ms", wait_info["queue_wait_ms"])
             response = request_json(
                 request, OLLAMA_CHAT_TIMEOUT_SECONDS, "workflow inference"
             )
@@ -100,9 +98,7 @@ def call_structured[PydanticOutput: BaseModel](
                 else approximate_tokens(content)
             )
             span.set_attribute("gen_ai.usage.prompt_tokens", resolved_prompt)
-            span.set_attribute(
-                "gen_ai.usage.completion_tokens", resolved_completion
-            )
+            span.set_attribute("gen_ai.usage.completion_tokens", resolved_completion)
             span.set_attribute(
                 "gen_ai.usage.total_tokens", resolved_prompt + resolved_completion
             )

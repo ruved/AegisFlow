@@ -10,10 +10,7 @@ from aegisflow.cache import (
     EmbeddingCache,
     RetrievalCache,
     clear_all_caches,
-    get_embedding_cache,
-    get_retrieval_cache,
 )
-from aegisflow.rag.embeddings import embed_texts
 from aegisflow.rag.retrieval import retrieve
 
 

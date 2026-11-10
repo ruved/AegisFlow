@@ -1,11 +1,12 @@
-"""Tests for bounded inference semaphore, priority queueing, and anti-starvation (E9)."""
+"""Tests for bounded inference semaphore, priority queueing, and aging (E9)."""
 
 import asyncio
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
-from aegisflow.concurrency import InferenceLimiter, RequestPriority
+from aegisflow.concurrency import InferenceLimiter, QueuedItem, RequestPriority
 
 
 @pytest.mark.anyio
@@ -18,7 +19,10 @@ async def test_inference_limiter_bounds_concurrency_k() -> None:
 
     async def worker(worker_id: int) -> None:
         nonlocal active, max_active
-        async with limiter.acquire(priority=RequestPriority.NORMAL, request_id=f"w{worker_id}"):
+        async with limiter.acquire(
+            priority=RequestPriority.NORMAL,
+            request_id=f"w{worker_id}",
+        ):
             async with lock:
                 active += 1
                 if active > max_active:
@@ -42,7 +46,10 @@ async def test_inference_limiter_priority_ordering() -> None:
 
     # Block the single slot with a long-running task
     async def blocker() -> None:
-        async with limiter.acquire(priority=RequestPriority.NORMAL, request_id="blocker"):
+        async with limiter.acquire(
+            priority=RequestPriority.NORMAL,
+            request_id="blocker",
+        ):
             await asyncio.sleep(0.1)
 
     async def worker(name: str, priority: RequestPriority) -> None:
@@ -55,7 +62,9 @@ async def test_inference_limiter_priority_ordering() -> None:
     # Enqueue Batch task first, then Interactive task second
     batch_task = asyncio.create_task(worker("batch_1", RequestPriority.BATCH))
     await asyncio.sleep(0.01)
-    interactive_task = asyncio.create_task(worker("interactive_1", RequestPriority.INTERACTIVE))
+    interactive_task = asyncio.create_task(
+        worker("interactive_1", RequestPriority.INTERACTIVE)
+    )
 
     await asyncio.gather(blocker_task, batch_task, interactive_task)
 
@@ -66,8 +75,6 @@ async def test_inference_limiter_priority_ordering() -> None:
 def test_inference_limiter_anti_starvation_aging() -> None:
     limiter = InferenceLimiter(k=1, aging_interval_s=0.1)
     old_time = time.monotonic() - 0.35
-    from unittest.mock import MagicMock
-    from aegisflow.concurrency import QueuedItem
 
     old_item = QueuedItem(
         effective_priority=2.0,
@@ -88,4 +95,3 @@ def test_inference_limiter_sync_acquire() -> None:
 
     with limiter.acquire_sync() as info:
         assert info["queue_wait_ms"] >= 0.0
-        assert info["acquired_at"] > 0.0

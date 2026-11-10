@@ -1,0 +1,11 @@
+{
+  "timestamp_utc": "2026-11-10T12:24:42.703907+00:00",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "system": "Windows",
+  "release": "11",
+  "python_version": "3.12.4",
+  "cpu_count": 16,
+  "chat_model": "gemma3:4b",
+  "embedding_model": "nomic-embed-text:latest",
+  "ollama_url": "http://localhost:11434"
+}

@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "scenario": "orchestrated",
+    "repetition": 2,
+    "mode": "warm",
+    "total_requests": 1,
+    "successful_requests": 1,
+    "failed_requests": 0,
+    "throughput_rps": 0.01,
+    "latency_mean_ms": 96723.3,
+    "latency_p50_ms": 96723.3,
+    "latency_p95_ms": 96723.3,
+    "latency_p99_ms": 96723.3,
+    "cache_hit_rate_pct": 0.0
+  },
+  "records": [
+    {
+      "query_id": "BM-001",
+      "scenario": "orchestrated",
+      "repetition": 2,
+      "mode": "warm",
+      "duration_ms": 96723.33,
+      "ttft_ms": 33853.16,
+      "prompt_tokens": 3506,
+      "completion_tokens": 638,
+      "total_tokens": 4144,
+      "cache_hit": false,
+      "status": "ok",
+      "error": null
+    }
+  ]
+}

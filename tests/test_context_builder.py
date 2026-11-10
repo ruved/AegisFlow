@@ -10,15 +10,35 @@ def test_context_builder_deduplication() -> None:
         (
             "subq 1",
             [
-                {"chunk_id": "c1", "source": "docA.md", "heading": "Sec1", "text": "Unique text 1"},
-                {"chunk_id": "c2", "source": "docB.md", "heading": "Sec1", "text": "Unique text 2"},
+                {
+                    "chunk_id": "c1",
+                    "source": "docA.md",
+                    "heading": "Sec1",
+                    "text": "Unique text 1",
+                },
+                {
+                    "chunk_id": "c2",
+                    "source": "docB.md",
+                    "heading": "Sec1",
+                    "text": "Unique text 2",
+                },
             ],
         ),
         (
             "subq 2",
             [
-                {"chunk_id": "c1", "source": "docA.md", "heading": "Sec1", "text": "Unique text 1"},  # duplicate id & text
-                {"chunk_id": "c3", "source": "docC.md", "heading": "Sec1", "text": "Unique text 3"},
+                {
+                    "chunk_id": "c1",
+                    "source": "docA.md",
+                    "heading": "Sec1",
+                    "text": "Unique text 1",  # duplicate id & text
+                },
+                {
+                    "chunk_id": "c3",
+                    "source": "docC.md",
+                    "heading": "Sec1",
+                    "text": "Unique text 3",
+                },
             ],
         ),
     ]

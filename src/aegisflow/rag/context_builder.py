@@ -178,7 +178,8 @@ class ContextBuilder:
 
         excluded_tokens = sum(e.tokens for e in excluded)
         logger.info(
-            "ContextBuilder: selected %d chunks (%d tokens), excluded %d chunks (%d tokens)",
+            "ContextBuilder: selected %d chunks (%d tokens), "
+            "excluded %d chunks (%d tokens)",
             len(selected),
             total_tokens,
             len(excluded),

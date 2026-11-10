@@ -87,9 +87,30 @@ def test_retrieval_cache_invalidation_on_corpus_version_bump(tmp_path: Path) -> 
 
 
 @pytest.mark.anyio
-async def test_end_to_end_retrieval_caching() -> None:
+async def test_end_to_end_retrieval_caching(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_all_caches()
     query = "When Order Service runs out of database connections"
+
+    mock_chunk = {
+        "chunk_id": "c1",
+        "source": "doc.md",
+        "text": "sample text",
+        "rrf_score": 0.5,
+    }
+
+    from aegisflow.rag import retrieval
+
+    async def fake_retrieve_ranked_lists(
+        *args: object, **kwargs: object
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        return ([mock_chunk], [mock_chunk])
+
+    monkeypatch.setattr(retrieval, "retrieve_ranked_lists", fake_retrieve_ranked_lists)
+    monkeypatch.setattr(
+        retrieval,
+        "hydrate_parent_results",
+        lambda fused, store_path, k: [mock_chunk],
+    )
 
     # First call: cold run
     r1 = await retrieve(query, k=2)

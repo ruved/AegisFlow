@@ -1,0 +1,221 @@
+{
+  "dataset": "D:\\cc\\prep\\aegisflow\\data\\eval\\holdout_set.jsonl",
+  "total_cases": 10,
+  "answerable_cases": 7,
+  "mean_recall_at_3": 0.762,
+  "mean_mrr": 0.857,
+  "mean_latency_ms": 2265.6,
+  "gate_passed": true,
+  "per_case_results": [
+    {
+      "id": "H001",
+      "slice": "single_hop",
+      "latency_ms": 2578.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": "2. Symptoms"
+        },
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": "1. Purpose"
+        },
+        {
+          "doc": "postmortems/PM-002-cache-stampede.md",
+          "section": "1. Summary"
+        }
+      ]
+    },
+    {
+      "id": "H002",
+      "slice": "single_hop",
+      "latency_ms": 2172.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-004-bad-deployment.md",
+          "section": "2. Symptoms"
+        },
+        {
+          "doc": "services/api-gateway.md",
+          "section": "Retrieval cautions"
+        },
+        {
+          "doc": "postmortems/PM-004-bad-deployment.md",
+          "section": "6. Resolution"
+        }
+      ]
+    },
+    {
+      "id": "H003",
+      "slice": "single_hop",
+      "latency_ms": 2312.0,
+      "recall_at_3": 1.0,
+      "mrr": 0.5,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-006-payment-provider-latency.md",
+          "section": null
+        },
+        {
+          "doc": "runbooks/RB-006-payment-provider-latency.md",
+          "section": "2. Symptoms"
+        },
+        {
+          "doc": "runbooks/RB-006-payment-provider-latency.md",
+          "section": "6. Verification"
+        }
+      ]
+    },
+    {
+      "id": "H004",
+      "slice": "multi_hop",
+      "latency_ms": 2172.0,
+      "recall_at_3": 0.5,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "postmortems/PM-002-cache-stampede.md",
+          "section": "7. Preventive actions"
+        },
+        {
+          "doc": "postmortems/PM-002-cache-stampede.md",
+          "section": null
+        },
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": "Database slowdown"
+        }
+      ]
+    },
+    {
+      "id": "H005",
+      "slice": "multi_hop",
+      "latency_ms": 2234.0,
+      "recall_at_3": 0.333,
+      "mrr": 0.5,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-006-payment-provider-latency.md",
+          "section": null
+        },
+        {
+          "doc": "logs/payment-provider-timeouts.log.md",
+          "section": "Retrieval cautions"
+        },
+        {
+          "doc": "services/payment-service.md",
+          "section": "Dependencies and request flow"
+        }
+      ]
+    },
+    {
+      "id": "H006",
+      "slice": "conflicting_documents",
+      "latency_ms": 2250.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": "Eviction pressure"
+        },
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": "Cache bypass or key mismatch"
+        },
+        {
+          "doc": "postmortems/PM-002-cache-stampede.md",
+          "section": "6. Resolution"
+        }
+      ]
+    },
+    {
+      "id": "H007",
+      "slice": "conflicting_documents",
+      "latency_ms": 2172.0,
+      "recall_at_3": 0.5,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-004-bad-deployment.md",
+          "section": "5. Mitigation"
+        },
+        {
+          "doc": "runbooks/RB-004-bad-deployment.md",
+          "section": "Application regression"
+        },
+        {
+          "doc": "services.md",
+          "section": "8. Corpus quality and provenance"
+        }
+      ]
+    },
+    {
+      "id": "H008",
+      "slice": "unanswerable",
+      "latency_ms": 2313.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": null
+        },
+        {
+          "doc": "services/dependency-map.md",
+          "section": "Redis cache stampede"
+        },
+        {
+          "doc": "runbooks/RB-002-redis-cache-stampede.md",
+          "section": "2. Symptoms"
+        }
+      ]
+    },
+    {
+      "id": "H009",
+      "slice": "unanswerable",
+      "latency_ms": 2265.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "runbooks/RB-004-bad-deployment.md",
+          "section": null
+        },
+        {
+          "doc": "runbooks/RB-004-bad-deployment.md",
+          "section": "8. Closure notes"
+        },
+        {
+          "doc": "postmortems/PM-004-bad-deployment.md",
+          "section": "3. Timeline"
+        }
+      ]
+    },
+    {
+      "id": "H010",
+      "slice": "unanswerable",
+      "latency_ms": 2188.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "top_sources": [
+        {
+          "doc": "services/api-gateway.md",
+          "section": "Responsibility"
+        },
+        {
+          "doc": "services/architecture.md",
+          "section": "1. System overview"
+        },
+        {
+          "doc": "services.md",
+          "section": "2. System overview"
+        }
+      ]
+    }
+  ]
+}

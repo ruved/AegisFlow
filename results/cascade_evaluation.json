@@ -1,0 +1,24 @@
+{
+  "primary_metrics": {
+    "model": "gemma3:4b",
+    "node": "planner",
+    "total_calls": 2,
+    "valid_schema_calls": 2,
+    "validation_rate_pct": 100.0,
+    "mean_latency_ms": 11147.6,
+    "p95_latency_ms": 6987.1,
+    "model_swap_delay_ms": 0.0
+  },
+  "alternate_metrics": {
+    "model": "qwen3.5:4b",
+    "node": "planner",
+    "total_calls": 2,
+    "valid_schema_calls": 0,
+    "validation_rate_pct": 0.0,
+    "mean_latency_ms": 70152.5,
+    "p95_latency_ms": 59427.2,
+    "model_swap_delay_ms": 0.0
+  },
+  "model_swap_delay_ms": 2372.6,
+  "decision": "DROP"
+}

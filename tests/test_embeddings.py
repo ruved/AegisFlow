@@ -3,12 +3,20 @@ from io import BytesIO
 
 import pytest
 
+from aegisflow.cache import clear_all_caches
 from aegisflow.rag import embeddings, ollama
 from aegisflow.rag.errors import (
     OllamaResponseError,
     OllamaTimeoutError,
     OllamaUnavailableError,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clean_cache():
+    clear_all_caches()
+    yield
+    clear_all_caches()
 
 
 class FakeResponse:

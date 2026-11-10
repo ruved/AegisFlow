@@ -1,0 +1,47 @@
+[
+  {
+    "threshold": 0.45,
+    "compression_ratio": 0.993,
+    "tokens_saved": 34,
+    "citation_recall": 1.0,
+    "embed_overhead_ms": 17262.6,
+    "prefill_savings_ms": 1.7,
+    "net_latency_impact_ms": 17260.9
+  },
+  {
+    "threshold": 0.55,
+    "compression_ratio": 0.875,
+    "tokens_saved": 592,
+    "citation_recall": 1.0,
+    "embed_overhead_ms": 55.6,
+    "prefill_savings_ms": 29.6,
+    "net_latency_impact_ms": 26.0
+  },
+  {
+    "threshold": 0.65,
+    "compression_ratio": 0.401,
+    "tokens_saved": 2828,
+    "citation_recall": 0.867,
+    "embed_overhead_ms": 54.3,
+    "prefill_savings_ms": 141.4,
+    "net_latency_impact_ms": -87.1
+  },
+  {
+    "threshold": 0.75,
+    "compression_ratio": 0.227,
+    "tokens_saved": 3649,
+    "citation_recall": 0.867,
+    "embed_overhead_ms": 50.2,
+    "prefill_savings_ms": 182.5,
+    "net_latency_impact_ms": -132.3
+  },
+  {
+    "threshold": 0.85,
+    "compression_ratio": 0.2,
+    "tokens_saved": 3773,
+    "citation_recall": 0.8,
+    "embed_overhead_ms": 52.4,
+    "prefill_savings_ms": 188.7,
+    "net_latency_impact_ms": -136.3
+  }
+]

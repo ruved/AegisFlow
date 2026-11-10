@@ -7,6 +7,7 @@ from urllib.request import Request
 
 from pydantic import BaseModel
 
+from aegisflow.concurrency import get_inference_limiter
 from aegisflow.config import MODEL_CONTEXT_SIZE, OLLAMA_CHAT_TIMEOUT_SECONDS
 from aegisflow.rag.errors import OllamaResponseError
 from aegisflow.rag.ollama import ollama_url, request_json
@@ -65,46 +66,53 @@ def call_structured[PydanticOutput: BaseModel](
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with trace_llm_call(model=model, schema_name=schema.__name__) as span:
-        response = request_json(
-            request, OLLAMA_CHAT_TIMEOUT_SECONDS, "workflow inference"
-        )
-        message = response.get("message")
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, str):
-            raise OllamaResponseError("Ollama returned no workflow output")
-        try:
-            value = schema.model_validate_json(content)
-        except Exception as exc:
-            raise OllamaResponseError(
-                "Ollama returned invalid workflow output"
-            ) from exc
+    limiter = get_inference_limiter()
+    with limiter.acquire_sync(timeout=OLLAMA_CHAT_TIMEOUT_SECONDS) as wait_info:
+        with trace_llm_call(model=model, schema_name=schema.__name__) as span:
+            span.set_attribute(
+                "inference.queue_wait_ms", wait_info["queue_wait_ms"]
+            )
+            response = request_json(
+                request, OLLAMA_CHAT_TIMEOUT_SECONDS, "workflow inference"
+            )
+            message = response.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(content, str):
+                raise OllamaResponseError("Ollama returned no workflow output")
+            try:
+                value = schema.model_validate_json(content)
+            except Exception as exc:
+                raise OllamaResponseError(
+                    "Ollama returned invalid workflow output"
+                ) from exc
 
-        prompt_count = response.get("prompt_eval_count")
-        completion_count = response.get("eval_count")
-        prompt_tokens = _validated_count(prompt_count)
-        completion_tokens = _validated_count(completion_count)
-        actual_counts = prompt_tokens is not None and completion_tokens is not None
-        resolved_prompt = (
-            prompt_tokens if prompt_tokens is not None else prompt_estimate
-        )
-        resolved_completion = (
-            completion_tokens
-            if completion_tokens is not None
-            else approximate_tokens(content)
-        )
-        span.set_attribute("gen_ai.usage.prompt_tokens", resolved_prompt)
-        span.set_attribute("gen_ai.usage.completion_tokens", resolved_completion)
-        span.set_attribute(
-            "gen_ai.usage.total_tokens", resolved_prompt + resolved_completion
-        )
+            prompt_count = response.get("prompt_eval_count")
+            completion_count = response.get("eval_count")
+            prompt_tokens = _validated_count(prompt_count)
+            completion_tokens = _validated_count(completion_count)
+            actual_counts = prompt_tokens is not None and completion_tokens is not None
+            resolved_prompt = (
+                prompt_tokens if prompt_tokens is not None else prompt_estimate
+            )
+            resolved_completion = (
+                completion_tokens
+                if completion_tokens is not None
+                else approximate_tokens(content)
+            )
+            span.set_attribute("gen_ai.usage.prompt_tokens", resolved_prompt)
+            span.set_attribute(
+                "gen_ai.usage.completion_tokens", resolved_completion
+            )
+            span.set_attribute(
+                "gen_ai.usage.total_tokens", resolved_prompt + resolved_completion
+            )
 
-        return StructuredCall(
-            value=value,
-            prompt_tokens=resolved_prompt,
-            completion_tokens=resolved_completion,
-            tokens_estimated=not actual_counts,
-        )
+            return StructuredCall(
+                value=value,
+                prompt_tokens=resolved_prompt,
+                completion_tokens=resolved_completion,
+                tokens_estimated=not actual_counts,
+            )
 
 
 def _nonnegative_int(value: object) -> bool:

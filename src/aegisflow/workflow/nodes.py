@@ -2,13 +2,23 @@
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from aegisflow.config import CHAT_MODEL
+from aegisflow.config import (
+    ANALYST_MODEL,
+    CHAT_MODEL,
+    FALLBACK_MODEL,
+    PLANNER_MODEL,
+    REPORTER_MODEL,
+    VERIFIER_MODEL,
+)
+from aegisflow.rag.context_builder import build_evidence_context
+from aegisflow.rag.errors import OllamaResponseError
 from aegisflow.rag.retrieval import DEFAULT_STORE_PATH, retrieve_sync
 from aegisflow.security_tools import mark_untrusted
 from aegisflow.workflow.models import StructuredCall, call_structured
@@ -64,18 +74,44 @@ def build_nodes(
         user: str,
         schema: type,
         planner: bool = False,
+        node_name: str | None = None,
     ) -> tuple[Any, dict[str, Any]]:
         if services.is_cancelled(state.get("run_id", "")):
             raise WorkflowCancelled
-        call = services.structured_call(
-            model=state.get("planner_model", state.get("model", CHAT_MODEL))
-            if planner
-            else state.get("model", CHAT_MODEL),
-            system=system,
-            user=user,
-            schema=schema,
-            remaining_tokens=remaining_tokens(state),
+
+        node_key = node_name or ("planner" if planner else "chat")
+        configured_node_model = {
+            "planner": PLANNER_MODEL,
+            "analyst": ANALYST_MODEL,
+            "reporter": REPORTER_MODEL,
+            "verifier": VERIFIER_MODEL,
+        }.get(node_key, CHAT_MODEL)
+
+        target_model = state.get(
+            f"{node_key}_model",
+            state.get("planner_model" if planner else "model", configured_node_model),
         )
+
+        try:
+            call = services.structured_call(
+                model=target_model,
+                system=system,
+                user=user,
+                schema=schema,
+                remaining_tokens=remaining_tokens(state),
+            )
+        except (OllamaResponseError, Exception):
+            if target_model != FALLBACK_MODEL:
+                call = services.structured_call(
+                    model=FALLBACK_MODEL,
+                    system=system,
+                    user=user,
+                    schema=schema,
+                    remaining_tokens=remaining_tokens(state),
+                )
+            else:
+                raise
+
         return call.value, {
             "_prompt_tokens": call.prompt_tokens,
             "_completion_tokens": call.completion_tokens,
@@ -89,6 +125,7 @@ def build_nodes(
             user=planner_prompt(state["question"]),
             schema=PlannerOutput,
             planner=True,
+            node_name="planner",
         )
         plan = cast(PlannerOutput, output)
         try:
@@ -109,24 +146,25 @@ def build_nodes(
 
     def retrieve(state: RunState) -> dict[str, Any]:
         store_path = state.get("store_path", str(DEFAULT_STORE_PATH))
-        retrieved: list[dict[str, Any]] = []
-        seen: set[str] = set()
+        subq_pairs: list[tuple[str, list[dict[str, Any]]]] = []
         for subquestion in state.get("subquestions", [state["question"]])[:3]:
             if services.is_cancelled(state.get("run_id", "")):
                 return {"next_node": "cancelled", "cancelled": True}
-            for chunk in services.retrieve(
+            chunks = services.retrieve(
                 subquestion, state.get("top_k", 3), store_path
-            ):
-                chunk_id = str(chunk.get("chunk_id", ""))
-                if not chunk_id or chunk_id in seen:
-                    continue
-                seen.add(chunk_id)
-                retrieved.append(dict(chunk))
+            )
+            subq_pairs.append((subquestion, chunks))
+
+        builder_result = build_evidence_context(subq_pairs)
         evidence = [
             {**chunk, "evidence_id": str(index)}
-            for index, chunk in enumerate(retrieved, start=1)
+            for index, chunk in enumerate(builder_result.selected_chunks, start=1)
         ]
-        return {"chunks": evidence, "next_node": "analyst"}
+        return {
+            "chunks": evidence,
+            "excluded_evidence": [asdict(e) for e in builder_result.excluded_chunks],
+            "next_node": "analyst",
+        }
 
     def analyst(state: RunState) -> dict[str, Any]:
         chunks = state.get("chunks", [])
@@ -150,6 +188,7 @@ def build_nodes(
             ),
             user=_evidence_prompt(state, chunks),
             schema=AnalystOutput,
+            node_name="analyst",
         )
         parsed = cast(AnalystOutput, output)
         valid_ids = _valid_evidence_ids(chunks)
@@ -195,6 +234,7 @@ def build_nodes(
                 f"Evidence:\n{_evidence_prompt(state, state.get('chunks', []))}"
             ),
             schema=ReporterOutput,
+            node_name="reporter",
         )
         parsed = cast(ReporterOutput, output)
         valid_ids = _valid_evidence_ids(state.get("chunks", []))
@@ -268,6 +308,7 @@ def build_nodes(
                 f"\n\nEvidence:\n{_evidence_prompt(state, chunks)}"
             ),
             schema=VerifierOutput,
+            node_name="verifier",
         )
         verdict = cast(VerifierOutput, output)
         if verdict.supported:
@@ -305,6 +346,7 @@ def build_nodes(
             ),
             schema=RewriteOutput,
             planner=True,
+            node_name="rewriter",
         )
         rewrite = cast(RewriteOutput, output)
         if rewrite.direct:

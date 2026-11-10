@@ -1,0 +1,106 @@
+{
+  "model": "gemma3:4b",
+  "trials": 5,
+  "mean_unstable_ttft_ms": 4825.2,
+  "mean_stable_ttft_ms": 3502.8,
+  "ttft_speedup_pct": 27.41,
+  "mean_unstable_prompt_eval_ms": 2639.77,
+  "mean_stable_prompt_eval_ms": 1394.8,
+  "prompt_eval_speedup_pct": 47.16,
+  "decision": "KEEP",
+  "rationale": "Prefix stability enables LLM KV-cache reuse across requests, reducing prompt prefill latency and TTFT without altering token semantics.",
+  "unstable_trials": [
+    {
+      "trial": 1,
+      "mode": "unstable",
+      "ttft_ms": 5781.0,
+      "prompt_eval_duration_ms": 3342.18,
+      "total_duration_ms": 9974.37,
+      "prompt_eval_count": 151,
+      "eval_count": 64
+    },
+    {
+      "trial": 2,
+      "mode": "unstable",
+      "ttft_ms": 4516.0,
+      "prompt_eval_duration_ms": 2386.79,
+      "total_duration_ms": 7711.17,
+      "prompt_eval_count": 147,
+      "eval_count": 64
+    },
+    {
+      "trial": 3,
+      "mode": "unstable",
+      "ttft_ms": 4282.0,
+      "prompt_eval_duration_ms": 2142.81,
+      "total_duration_ms": 7446.67,
+      "prompt_eval_count": 144,
+      "eval_count": 64
+    },
+    {
+      "trial": 4,
+      "mode": "unstable",
+      "ttft_ms": 4750.0,
+      "prompt_eval_duration_ms": 2640.12,
+      "total_duration_ms": 8106.85,
+      "prompt_eval_count": 146,
+      "eval_count": 64
+    },
+    {
+      "trial": 5,
+      "mode": "unstable",
+      "ttft_ms": 4797.0,
+      "prompt_eval_duration_ms": 2686.94,
+      "total_duration_ms": 8152.59,
+      "prompt_eval_count": 148,
+      "eval_count": 64
+    }
+  ],
+  "stable_trials": [
+    {
+      "trial": 1,
+      "mode": "stable",
+      "ttft_ms": 3609.0,
+      "prompt_eval_duration_ms": 1451.89,
+      "total_duration_ms": 6348.1,
+      "prompt_eval_count": 97,
+      "eval_count": 64
+    },
+    {
+      "trial": 2,
+      "mode": "stable",
+      "ttft_ms": 3500.0,
+      "prompt_eval_duration_ms": 1379.39,
+      "total_duration_ms": 6082.26,
+      "prompt_eval_count": 93,
+      "eval_count": 64
+    },
+    {
+      "trial": 3,
+      "mode": "stable",
+      "ttft_ms": 3437.0,
+      "prompt_eval_duration_ms": 1350.35,
+      "total_duration_ms": 6349.31,
+      "prompt_eval_count": 92,
+      "eval_count": 64
+    },
+    {
+      "trial": 4,
+      "mode": "stable",
+      "ttft_ms": 3515.0,
+      "prompt_eval_duration_ms": 1416.79,
+      "total_duration_ms": 5970.58,
+      "prompt_eval_count": 91,
+      "eval_count": 64
+    },
+    {
+      "trial": 5,
+      "mode": "stable",
+      "ttft_ms": 3453.0,
+      "prompt_eval_duration_ms": 1375.58,
+      "total_duration_ms": 6234.09,
+      "prompt_eval_count": 94,
+      "eval_count": 64
+    }
+  ]
+}

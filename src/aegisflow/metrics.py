@@ -139,6 +139,11 @@ def record_retry(reason: str) -> None:
     WORKFLOW_RETRIES_TOTAL.labels(reason=reason).inc()
 
 
+def record_cache_hit(component: str = "workflow") -> None:
+    """Record a cache hit for a given component."""
+    CACHE_HITS_TOTAL.labels(component=component).inc()
+
+
 def get_latest_metrics() -> bytes:
     """Serialize all metrics in standard Prometheus text format."""
     return generate_latest(REGISTRY)

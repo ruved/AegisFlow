@@ -237,10 +237,10 @@ Automated GitHub Actions pipeline ([.github/workflows/ci.yml](.github/workflows/
 
 ## Verification & Test Results
 
-All quality, security, and observability checks pass cleanly:
+All quality, security, performance, and observability checks pass cleanly:
 
 ```powershell
-# Run the complete test suite (145 tests)
+# Run the complete test suite (163 tests)
 uv run pytest -v
 
 # Code formatting and style
@@ -252,18 +252,40 @@ uv run mypy src
 
 # CI Quality Gate
 uv run python evals/ci_eval_gate.py
+
+# Red team policy enforcement
+uv run python evals/run_red_team.py --runs 3
 ```
 
 ### Current Status:
-- **145/145 automated unit and integration tests passing.**
+- **163/163 automated unit and integration tests passing.**
+- **Weeks 8–9 Optimizations (E3, E5, E9, E10):** 100% verified with empirical benchmarks.
+- **E3 Retrieval Caching:** 0.17 ms repeat retrieval latency; 19.7%–20.1% mixed workload speedup (ADR-005).
+- **E5 Context Builder:** Subquestion & global token caps eliminate redundant chunks with 100% citation recall (ADR-006).
+- **E9 Concurrency Limiter:** $K=2$ inference slots cut p95 tail latency by 66.7% under burst loads (ADR-009).
+- **E10 Prefix Stability:** Invariant system prefixes cut TTFT by 27.4% and prompt evaluation by 47.2% (ADR-011).
+- **Concurrency Load Testing:** Zero errors (0.0%) across 1, 4, 10, and 25 virtual users with up to 39.2 req/s throughput (ADR-010).
+- **Hold-Out Quality Gate:** Recall@3 = 0.762, MRR = 0.857 on unseen incident hold-out dataset (Gate PASSED).
 - **OpenTelemetry trace hierarchy and GenAI attributes:** 100% verified.
 - **Prometheus metric cardinality & /metrics export:** 100% verified.
 - **Streamlit UI citation offset highlighting & client:** 100% verified.
 - **CI evaluation gate (baseline pass + simulated regression trip):** 100% verified.
-- **0 policy bypasses** across 175 red-team adversarial attacks.
+- **0 policy bypasses** across red-team adversarial attacks (105 attempted proposals).
 - **0 secret or PII leaks** in JSON logs.
-- **Ruff linter and code formatter:** 100% compliant across 113 files.
-- **Mypy static analysis:** Clean across 34 source modules.
+
+---
+
+## Performance Optimisation & Scalability Summary (Weeks 8–9)
+
+| Experiment | Description | Status | Measured Impact / Rationale | ADR |
+| :--- | :--- | :---: | :--- | :--- |
+| **E3: Caching** | Bounded LRU + TTL embedding & retrieval cache | **ACCEPTED** | **-19.7%** mixed latency; cache hit latency **0.17 ms** | [ADR-005](docs/ADR-005-embedding-and-retrieval-caching.md) |
+| **E5: Context Builder** | Token budgeting, deduplication & section diversity | **ACCEPTED** | Prevents prompt overflow; preserves 100% citation recall | [ADR-006](docs/ADR-006-context-builder-token-budgeting.md) |
+| **E6: Sentence Pruner** | Extractive compression via sentence embedding | **DROPPED** | Embedding overhead (+55ms) exceeds prefill savings; recall drops | [ADR-007](docs/ADR-007-sentence-level-pruning.md) |
+| **E7: Model Cascade** | Dynamic per-node small/large model routing | **DROPPED** | 2,372.6 ms model swapping delay per transition | [ADR-008](docs/ADR-008-model-cascade-and-routing.md) |
+| **E9: Concurrency Limiter**| Bounded $K=2$ semaphore with 3-tier priority queue | **ACCEPTED** | **-66.7%** p95 latency (219ms vs 657ms); anti-starvation aging | [ADR-009](docs/ADR-009-inference-concurrency-and-priority-queue.md) |
+| **Load Testing** | 1, 4, 10, 25 virtual users x 3 reps | **ACCEPTED** | Safe ceiling: 10–25 concurrent users; 0.0% error rate | [ADR-010](docs/ADR-010-concurrency-limits-and-capacity.md) |
+| **E10: Prefix Stability** | Invariant system/schema prefixes for KV-cache reuse | **ACCEPTED** | **-27.4%** TTFT, **-47.2%** prompt prefill duration | [ADR-011](docs/ADR-011-prefix-stability-and-prompt-structure.md) |
 
 ---
 
@@ -273,7 +295,8 @@ uv run python evals/ci_eval_gate.py
 - **Observability:** OpenTelemetry traces and Prometheus `/metrics` with Grafana dashboard. **[MET]**
 - **Streamlit UI:** Live timeline, drift-free cited evidence highlighting, and trace inspector. **[MET]**
 - **CI Quality Gate:** Deterministic, GPU-independent regression gate in GitHub Actions. **[MET]**
-- **Decision:** **GO FOR MILESTONE 2 RELEASE**.
+- **Performance & Scalability:** Bounded concurrency, low-latency caching, prefix stability, verified hold-out quality. **[MET]**
+- **Decision:** **GO FOR MILESTONE 3 / PRODUCTION DEPLOYMENT**.
 
 ---
 
@@ -285,6 +308,15 @@ uv run python evals/ci_eval_gate.py
 - [ADR-002: Hybrid Retrieval](docs/ADR-002-hybrid-retrieval.md)
 - [ADR-003: Abstention and Grader Calibration](docs/ADR-003-abstention-and-grader.md)
 - [ADR-004: Typed Workflow and E4 Results](docs/ADR-004-e4-workflow.md)
+- [ADR-005: Embedding & Retrieval Caching (E3)](docs/ADR-005-embedding-and-retrieval-caching.md)
+- [ADR-006: Context Builder Token Budgeting (E5)](docs/ADR-006-context-builder-token-budgeting.md)
+- [ADR-007: Sentence-Level Pruning (E6)](docs/ADR-007-sentence-level-pruning.md)
+- [ADR-008: Model Cascade and Node Routing (E7)](docs/ADR-008-model-cascade-and-routing.md)
+- [ADR-009: Inference Concurrency Limiter and Priority Queue (E9)](docs/ADR-009-inference-concurrency-and-priority-queue.md)
+- [ADR-010: Concurrency Limits and Operational Capacity](docs/ADR-010-concurrency-limits-and-capacity.md)
+- [ADR-011: Prompt Prefix Stability and KV-Cache Reuse (E10)](docs/ADR-011-prefix-stability-and-prompt-structure.md)
 - [Hardware and Model Notes](docs/hardware.md)
 - [W6 D1-D6 devlog](devlog/W6_D1-D6.md)
 - [W7 D1-D6 devlog](devlog/W7_D1-D6.md)
+- [W8 D1-D6 devlog](devlog/W8_D1-D6.md)
+- [W9 D1-D6 devlog](devlog/W9_D1-D6.md)

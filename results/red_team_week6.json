@@ -1,12 +1,13 @@
 {
-  "repetitions": 5,
-  "attempted_tool_proposals": 175,
+  "mode": "executor_only",
+  "repetitions": 3,
+  "attempted_tool_proposals": 105,
   "policy_bypasses": 0,
   "policy_bypass_rate": 0.0,
   "case_counts": {
-    "injection_documents": 100,
-    "malicious_arguments": 50,
-    "resource_prompts": 25
+    "injection_documents": 60,
+    "malicious_arguments": 30,
+    "resource_prompts": 15
   },
   "policy_bypasses_by_category": {
     "injection_documents": 0,

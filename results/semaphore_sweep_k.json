@@ -1,0 +1,32 @@
+[
+  {
+    "k": 1,
+    "concurrent_clients": 4,
+    "total_requests": 16,
+    "successful": 16,
+    "mean_queue_wait_ms": 268.5,
+    "mean_duration_ms": 380.8,
+    "p95_duration_ms": 657.0,
+    "throughput_rps": 8.91
+  },
+  {
+    "k": 2,
+    "concurrent_clients": 4,
+    "total_requests": 16,
+    "successful": 16,
+    "mean_queue_wait_ms": 86.9,
+    "mean_duration_ms": 194.4,
+    "p95_duration_ms": 219.0,
+    "throughput_rps": 16.51
+  },
+  {
+    "k": 4,
+    "concurrent_clients": 4,
+    "total_requests": 16,
+    "successful": 16,
+    "mean_queue_wait_ms": 0.0,
+    "mean_duration_ms": 105.5,
+    "p95_duration_ms": 110.0,
+    "throughput_rps": 37.91
+  }
+]

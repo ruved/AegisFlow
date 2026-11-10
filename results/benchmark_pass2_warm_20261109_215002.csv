@@ -1,0 +1,11 @@
+query_id,category,mode,duration_ms,ttft_ms,prompt_tokens,completion_tokens,total_tokens,cache_hit,status,error
+BM-001,unique,warm,2108.31,2108.31,146,0,146,False,ok,
+BM-002,unique,warm,2131.76,2131.76,139,0,139,False,ok,
+BM-003,unique,warm,2126.21,2126.21,137,0,137,False,ok,
+BM-004,unique,warm,2134.55,2134.55,131,0,131,False,ok,
+BM-005,unique,warm,2153.14,2153.14,139,0,139,False,ok,
+BM-006,paraphrase,warm,2145.97,2145.97,141,0,141,False,ok,
+BM-007,paraphrase,warm,2067.72,2067.72,134,0,134,False,ok,
+BM-008,overlap,warm,2107.94,2107.94,135,0,135,False,ok,
+BM-009,overlap,warm,2162.81,2162.81,137,0,137,False,ok,
+BM-010,paraphrase,warm,2135.08,2135.08,135,0,135,False,ok,

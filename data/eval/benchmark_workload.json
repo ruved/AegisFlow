@@ -1,0 +1,67 @@
+[
+  {
+    "id": "BM-001",
+    "question": "When Order Service runs out of database connections, which four diagnostic categories should the on-call engineer distinguish?",
+    "category": "unique",
+    "expected_doc": "runbooks/RB-001-db-pool-exhaustion.md"
+  },
+  {
+    "id": "BM-002",
+    "question": "At the recorded peak for order-01, what were the active, idle, and maximum database-pool counts?",
+    "category": "unique",
+    "expected_doc": "logs/order-db-pool-incident.log.md"
+  },
+  {
+    "id": "BM-003",
+    "question": "What initiating pattern explains the database load increase in the product-cache incident?",
+    "category": "unique",
+    "expected_doc": "postmortems/PM-002-cache-stampede.md"
+  },
+  {
+    "id": "BM-004",
+    "question": "Which external dependency slowed the consumers involved in PM-003?",
+    "category": "unique",
+    "expected_doc": "postmortems/PM-003-kafka-consumer-backlog.md"
+  },
+  {
+    "id": "BM-005",
+    "question": "Which release should be considered the culprit in the Order Service incident documented in PM-004?",
+    "category": "unique",
+    "expected_doc": "postmortems/PM-004-bad-deployment.md"
+  },
+  {
+    "id": "BM-006",
+    "question": "For an Order Service db pool exhaustion, what 4 diagnostic buckets should the on-call engineer identify?",
+    "category": "paraphrase",
+    "paraphrase_of": "BM-001",
+    "expected_doc": "runbooks/RB-001-db-pool-exhaustion.md"
+  },
+  {
+    "id": "BM-007",
+    "question": "What caused the database load surge during the product catalog cache stampede?",
+    "category": "paraphrase",
+    "paraphrase_of": "BM-003",
+    "expected_doc": "postmortems/PM-002-cache-stampede.md"
+  },
+  {
+    "id": "BM-008",
+    "question": "What were the active and idle pool connections during the order-01 incident peak?",
+    "category": "overlap",
+    "overlaps_with": "BM-002",
+    "expected_doc": "logs/order-db-pool-incident.log.md"
+  },
+  {
+    "id": "BM-009",
+    "question": "What is the mitigation for slow queries causing database pool exhaustion in Order Service?",
+    "category": "overlap",
+    "overlaps_with": "BM-001",
+    "expected_doc": "runbooks/RB-001-db-pool-exhaustion.md"
+  },
+  {
+    "id": "BM-010",
+    "question": "How did third-party notification delays trigger the kafka consumer lag incident?",
+    "category": "paraphrase",
+    "paraphrase_of": "BM-004",
+    "expected_doc": "postmortems/PM-003-kafka-consumer-backlog.md"
+  }
+]

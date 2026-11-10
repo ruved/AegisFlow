@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from aegisflow.cache import get_retrieval_cache
 from aegisflow.rag.embeddings import embed_texts
 from aegisflow.rag.lexical_index import LexicalIndex
 from aegisflow.rag.vector_store import VectorStore
@@ -180,6 +181,14 @@ async def retrieve(
 
     candidate_limit = max(k * 3, k)
     with trace_retrieval(query, k, str(store_path)) as span:
+        cache = get_retrieval_cache()
+        cached = cache.get(query, k, store_path, rrf_constant)
+        if cached is not None:
+            span.set_attribute("cache.hit", True)
+            span.set_attribute("retrieval.results_count", len(cached))
+            return cached
+
+        span.set_attribute("cache.hit", False)
         dense_results, lexical_results = await retrieve_ranked_lists(
             query, k=candidate_limit, store_path=store_path
         )
@@ -193,6 +202,7 @@ async def retrieve(
             hydrate_parent_results, fused_children, store_path, k
         )
         span.set_attribute("retrieval.results_count", len(results))
+        cache.put(query, results, k, store_path, rrf_constant)
         return results
 
 
